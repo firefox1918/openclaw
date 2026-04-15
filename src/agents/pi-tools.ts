@@ -48,6 +48,7 @@ import {
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
+import { buildPermissionConfigFromPolicies } from "./runtime-permission-check.js";
 import type { SandboxContext } from "./sandbox.js";
 import {
   EXEC_TOOL_DISPLAY_SUMMARY,
@@ -666,6 +667,18 @@ export function createOpenClawCodingTools(options?: {
       modelCompat: options?.modelCompat,
     }),
   );
+
+  // Build permission config from policies for runtime permission checking
+  const permissionConfig = buildPermissionConfigFromPolicies({
+    globalPolicy,
+    globalProviderPolicy,
+    agentPolicy,
+    agentProviderPolicy,
+    groupPolicy,
+    sandboxToolPolicy,
+    subagentPolicy,
+  });
+
   const withHooks = normalized.map((tool) =>
     wrapToolWithBeforeToolCallHook(tool, {
       agentId,
@@ -673,6 +686,7 @@ export function createOpenClawCodingTools(options?: {
       sessionId: options?.sessionId,
       runId: options?.runId,
       loopDetection: resolveToolLoopDetectionConfig({ cfg: options?.config, agentId }),
+      permissionConfig,
     }),
   );
   const withAbort = options?.abortSignal

@@ -7,6 +7,15 @@ import { PluginApprovalResolutions, type PluginApprovalResolution } from "../plu
 import { createLazyRuntimeSurface } from "../shared/lazy-runtime.js";
 import { isPlainObject } from "../utils.js";
 import { copyChannelAgentToolMeta } from "./channel-tools.js";
+import type { ToolPermissionContext } from "./permissions/index.js";
+import {
+  checkRuntimePermission,
+  createRuntimePermissionContext,
+  handlePermissionAsk,
+  handlePermissionDenial,
+  type RuntimePermissionConfig,
+  type RuntimePermissionCheckResult,
+} from "./runtime-permission-check.js";
 import { normalizeToolName } from "./tool-policy.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { callGatewayTool } from "./tools/gateway.js";
@@ -18,6 +27,10 @@ export type HookContext = {
   sessionId?: string;
   runId?: string;
   loopDetection?: ToolLoopDetectionConfig;
+  /** Permission context for runtime permission checking. */
+  permissionContext?: ToolPermissionContext;
+  /** Permission config for creating permission context on demand. */
+  permissionConfig?: RuntimePermissionConfig;
 };
 
 type HookOutcome = { blocked: true; reason: string } | { blocked: false; params: unknown };
@@ -125,6 +138,56 @@ async function recordLoopOutcome(args: {
   }
 }
 
+/**
+ * Run runtime permission check before tool execution.
+ *
+ * This is the Layer 3 permission check from the integration plan,
+ * executing after startup-time tool filtering (Layer 1) and
+ * owner-only restrictions (Layer 2).
+ */
+async function runPermissionCheck(args: {
+  toolName: string;
+  params: unknown;
+  ctx?: HookContext;
+}): Promise<{ blocked: boolean; reason?: string; askPrompt?: RuntimePermissionCheckResult }> {
+  // Skip if no permission context or config provided
+  if (!args.ctx?.permissionContext && !args.ctx?.permissionConfig) {
+    return { blocked: false };
+  }
+
+  const toolName = normalizeToolName(args.toolName || "tool");
+  const params = isPlainObject(args.params) ? args.params : {};
+
+  try {
+    // Use provided context or create from config
+    const context =
+      args.ctx.permissionContext ?? createRuntimePermissionContext(args.ctx.permissionConfig ?? {});
+
+    const result = await checkRuntimePermission(toolName, params, context);
+
+    if (result.allowed) {
+      return { blocked: false };
+    }
+
+    if (result.decision.behavior === "deny") {
+      const denial = handlePermissionDenial(result);
+      return { blocked: true, reason: denial.message };
+    }
+
+    if (result.decision.behavior === "ask") {
+      // Return the ask result for downstream handling
+      // The actual user confirmation flow is handled by plugin hooks
+      return { blocked: false, askPrompt: result };
+    }
+
+    return { blocked: false };
+  } catch (err) {
+    log.warn(`permission check failed for tool ${toolName}: ${String(err)}`);
+    // On error, allow the operation - fail-open for compatibility
+    return { blocked: false };
+  }
+}
+
 export async function runBeforeToolCallHook(args: {
   toolName: string;
   params: unknown;
@@ -183,6 +246,129 @@ export async function runBeforeToolCallHook(args: {
     }
 
     recordToolCall(sessionState, toolName, params, args.toolCallId, args.ctx.loopDetection);
+  }
+
+  // Layer 3: Runtime permission check
+  const permissionResult = await runPermissionCheck({
+    toolName,
+    params,
+    ctx: args.ctx,
+  });
+
+  if (permissionResult.blocked) {
+    return {
+      blocked: true,
+      reason: permissionResult.reason ?? "Permission denied",
+    };
+  }
+
+  // Handle permission ask - trigger approval flow
+  if (permissionResult.askPrompt) {
+    const askData = handlePermissionAsk(permissionResult.askPrompt);
+    // Trigger approval using the same gateway mechanism as plugin hooks
+    try {
+      const requestResult: {
+        id?: string;
+        status?: string;
+        decision?: string | null;
+      } = await callGatewayTool(
+        "plugin.approval.request",
+        { timeoutMs: 120_000 + 10_000 },
+        {
+          pluginId: "permissions",
+          title: `Permission Required: ${toolName}`,
+          description: askData.message,
+          severity: "medium",
+          toolName,
+          toolCallId: args.toolCallId,
+          agentId: args.ctx?.agentId,
+          sessionKey: args.ctx?.sessionKey,
+          timeoutMs: 120_000,
+          twoPhase: true,
+        },
+        { expectFinal: false },
+      );
+      const id = requestResult?.id;
+      if (!id) {
+        return {
+          blocked: true,
+          reason: askData.message || "Permission approval request failed",
+        };
+      }
+      const hasImmediateDecision = Object.prototype.hasOwnProperty.call(
+        requestResult ?? {},
+        "decision",
+      );
+      let decision: string | null | undefined;
+      if (hasImmediateDecision) {
+        decision = requestResult?.decision;
+        if (decision === null) {
+          return {
+            blocked: true,
+            reason: "Permission approval unavailable (no approval route)",
+          };
+        }
+      } else {
+        // Wait for the decision
+        const waitPromise: Promise<{
+          id?: string;
+          decision?: string | null;
+        }> = callGatewayTool(
+          "plugin.approval.waitDecision",
+          { timeoutMs: 120_000 + 10_000 },
+          { id },
+        );
+        let waitResult: { id?: string; decision?: string | null } | undefined;
+        if (args.signal) {
+          let onAbort: (() => void) | undefined;
+          const abortPromise = new Promise<never>((_, reject) => {
+            if (args.signal!.aborted) {
+              reject(args.signal!.reason);
+              return;
+            }
+            onAbort = () => reject(args.signal!.reason);
+            args.signal!.addEventListener("abort", onAbort, { once: true });
+          });
+          try {
+            waitResult = await Promise.race([waitPromise, abortPromise]);
+          } finally {
+            if (onAbort) {
+              args.signal.removeEventListener("abort", onAbort);
+            }
+          }
+        } else {
+          waitResult = await waitPromise;
+        }
+        decision = waitResult?.decision;
+      }
+      if (
+        decision === PluginApprovalResolutions.ALLOW_ONCE ||
+        decision === PluginApprovalResolutions.ALLOW_ALWAYS
+      ) {
+        return {
+          blocked: false,
+          params: args.params,
+        };
+      }
+      if (decision === PluginApprovalResolutions.DENY) {
+        return { blocked: true, reason: "Denied by user" };
+      }
+      // Timeout or other - deny by default for permission asks
+      return { blocked: true, reason: "Permission approval timed out" };
+    } catch (err) {
+      if (isAbortSignalCancellation(err, args.signal)) {
+        log.warn(`permission approval wait cancelled by run abort: ${String(err)}`);
+        return {
+          blocked: true,
+          reason: "Approval cancelled (run aborted)",
+        };
+      }
+      log.warn(`permission approval gateway request failed: ${String(err)}`);
+      return {
+        blocked: true,
+        reason: "Permission approval required (gateway unavailable)",
+      };
+    }
   }
 
   const hookRunner = getGlobalHookRunner();
