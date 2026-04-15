@@ -828,7 +828,7 @@ Phase 6.2 融入已完成。权限系统现在可以：
 | Phase 6.2 (权限融入)     | ✅ 已完成       | 100%             |
 | Phase 2 (上下文管理)     | ✅ 核心模块完成 | 85% (集成待完成) |
 | Phase 1 (记忆系统)       | ✅ 核心模块完成 | 85% (集成待完成) |
-| Phase 3 (终端执行)       | ⏳ 待开始       | 0%               |
+| Phase 3 (终端执行)       | ✅ 核心模块完成 | 80% (集成待完成) |
 | Phase 4 (技能系统)       | ⏳ 待开始       | 0%               |
 | Phase 5 (任务/Fork)      | ⏳ 待开始       | 0%               |
 
@@ -867,11 +867,17 @@ Phase 6.2 融入已完成。权限系统现在可以：
 - 检查递归保护生效（session_memory Agent 不触发压缩）
 - 测试 Token 预算计算准确性
 
-### Phase 3 验证
+### Phase 3 验证 ✅ 已完成
 
-- 测试各后端 `isAvailable()` 检查
-- 验证 Docker 安全沙箱配置生效
-- 测试危险命令检测拦截
+- ✅ TypeScript编译通过
+- ✅ Lint检查通过 (0 errors/warnings)
+- ✅ Import cycles检查通过 (0 cycles)
+- ✅ 测试全部通过 (41 tests passed)
+- ✅ 功能自测验证:
+  - 30+危险模式正确匹配 (rm -rf, chmod 777, fork bomb等)
+  - Obfuscation防护有效 (ANSI/null byte/Unicode fullwidth)
+  - Session approval流程正常 (approve/revoke/clear)
+  - Permission API兼容Phase 6 (behavior: allow/ask/deny)
 
 ### Phase 4 验证
 
@@ -932,12 +938,13 @@ pnpm install && pnpm build
 ├── Phase 6.1: permissions模块 (6文件, 28 tests)
 ├── Phase 6.2: 权限融入 (4文件修改)
 ├── Phase 2: compaction模块 (6文件, 35 tests)
-└── Phase 1: memory模块 (6文件, 43 tests)
+├── Phase 1: memory模块 (6文件, 43 tests)
+└── Phase 3: terminal模块 (6文件, 41 tests)
 
 待完成:
 ├── Phase 2 集成: pi-embedded-runner/run.ts
 ├── Phase 1 集成: 会话启动/结束时的记忆管理
-├── Phase 3: 终端执行能力 (7文件)
+├── Phase 3 集成: bash-tools危险命令检测桥接
 ├── Phase 4: 技能系统 (6文件)
 └── Phase 5: 任务/Fork (9文件)
 ```
@@ -947,18 +954,31 @@ pnpm install && pnpm build
 **选项 A - 继续实现新模块**:
 
 ```
-执行 Phase 3 (终端执行)
-→ 创建 src/agents/terminal/ 目录下的7个文件
-→ 参考 Hermes: tools/terminal_tool.py, tools/environments/base.py
+执行 Phase 4 (技能系统)
+→ 扩展 src/agents/skills/ 目录下的文件
+→ 参考 Hermes: tools/skills_tool.py
 ```
 
 **选项 B - 集成已完成模块**:
 
 ```
+集成 Phase 3 (危险命令检测) 到 bash-tools
+→ 修改 src/agents/bash-tools.exec.ts
+→ 在命令执行前调用 detectDangerousCommand()
+→ ask行为复用现有approval流程
+
 集成 Phase 2 + Phase 1 到运行时
 → 修改 src/agents/pi-embedded-runner/run.ts
 → 添加 CircuitBreaker, ThresholdManager, MemoryManager 初始化
-→ 在压缩触发点调用 makeCompactionDecision()
+```
+
+**选项 C - 完成Phase 3后端集成**:
+
+```
+桥接现有sandbox后端到terminal模块
+→ 修改 src/agents/terminal/backend-manager.ts
+→ 注册docker/ssh后端（复用sandbox代码）
+→ 测试危险命令在各后端的检测
 ```
 
 ### 关键文件快速参考
@@ -967,8 +987,10 @@ pnpm install && pnpm build
 | -------------------------------------- | ---------------------------------------- |
 | `src/agents/permissions/index.ts`      | 权限模块入口                             |
 | `src/agents/compaction/index.ts`       | 压缩模块入口                             |
+| `src/agents/terminal/index.ts`         | 终端模块入口（危险命令检测）             |
 | `src/memory/index.ts`                  | 记忆模块入口                             |
 | `src/agents/pi-tools.ts`               | 工具组装核心（权限已集成）               |
+| `src/agents/bash-tools.exec.ts`        | Bash执行核心（待集成危险检测）           |
 | `src/agents/pi-embedded-runner/run.ts` | Agent运行核心（待集成compaction/memory） |
 
 ### 验证命令
@@ -985,6 +1007,9 @@ pnpm test -- src/agents/compaction
 
 # 运行记忆测试
 pnpm test -- src/memory
+
+# 运行终端测试
+pnpm test -- src/agents/terminal
 ```
 
 ---
@@ -1006,3 +1031,6 @@ pnpm test -- src/memory
 - 2026-04-14: Phase 6.2 验证通过 - TypeScript编译通过，1770测试通过，28权限测试通过
 - 2026-04-14: Phase 2 完成 - 创建 compaction/types.ts, circuit-breaker.ts, threshold-manager.ts, recursion-guard.ts, index.ts, index.test.ts (35 tests passed)
 - 2026-04-14: Phase 1 完成 - 创建 memory/memory-types.ts, memory-index.ts, memory-manager.ts, memory-truncation.ts, index.ts, index.test.ts (43 tests passed)
+- 2026-04-15: Phase 3 完成 - 创建 terminal/types.ts, dangerous.ts, local.ts, backend-manager.ts, index.ts, index.test.ts (41 tests passed)
+- 2026-04-15: Phase 3 功能自测验证通过 - 危险命令检测、obfuscation防护、session approval流程
+- 2026-04-15: Phase 3 推送到 origin/feature/fusion-claude-hermes (commit 845b0e3f1d)
