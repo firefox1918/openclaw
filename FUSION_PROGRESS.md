@@ -669,35 +669,85 @@ Phase 6.2 融入已完成。权限系统现在可以：
 
 ## Phase 3: 终端执行能力 [中优先级]
 
-**状态**: ⏳ 待开始
-**预计工作量**: 2-3周
-**文件数量**: 7个文件
+**状态**: ✅ 已完成 (核心模块 - 危险命令检测)
+**实际工作量**: 1天
+**文件数量**: 5个文件
 
 ### 文件清单
 
-| 文件路径                                 | 操作 | 状态 |
-| ---------------------------------------- | ---- | ---- |
-| `src/agents/terminal/types.ts`           | 新建 | ⏳   |
-| `src/agents/terminal/backend-base.ts`    | 新建 | ⏳   |
-| `src/agents/terminal/backends/local.ts`  | 新建 | ⏳   |
-| `src/agents/terminal/backends/docker.ts` | 新建 | ⏳   |
-| `src/agents/terminal/backends/modal.ts`  | 新建 | ⏳   |
-| `src/agents/terminal/backend-manager.ts` | 新建 | ⏳   |
-| `src/agents/tools/nodes-tool.ts`         | 修改 | ⏳   |
+| 文件路径                                 | 操作 | 状态                        |
+| ---------------------------------------- | ---- | --------------------------- |
+| `src/agents/terminal/types.ts`           | 新建 | ✅ 已完成                   |
+| `src/agents/terminal/dangerous.ts`       | 新建 | ✅ 已完成                   |
+| `src/agents/terminal/local.ts`           | 新建 | ✅ 已完成                   |
+| `src/agents/terminal/backend-manager.ts` | 新建 | ✅ 已完成                   |
+| `src/agents/terminal/index.ts`           | 新建 | ✅ 已完成                   |
+| `src/agents/terminal/index.test.ts`      | 新建 | ✅ 已完成 (41 tests passed) |
 
-### 关键设计要点
+### 实现内容
 
-- 6种后端: `local`, `docker`, `modal`, `ssh`, `daytona`, `singularity`
-- 统一接口: `execute(command, options) → ExecuteResult`, `cleanup()`, `isAvailable()`
-- 安全沙箱: Docker: `--cap-drop ALL`, `--pids-limit 256`, `no-new-privileges`
-- 危险命令检测: `rm -rf /`, fork bomb, dd写设备等模式
+#### types.ts - 类型定义和危险模式
+
+- `DANGEROUS_PATTERNS`: 30+危险命令正则模式（从Hermes移植）
+  - 文件系统破坏: rm -rf, chmod 777, chown root
+  - 磁盘/设备操作: dd, mkfs, 写入/dev/sd
+  - SQL破坏: DROP, DELETE without WHERE, TRUNCATE
+  - 系统服务: systemctl stop/disable
+  - 进程操作: kill -9 -1, fork bomb
+  - 远程脚本: curl | sh, wget | bash
+  - Git破坏: reset --hard, force push, clean -f
+- `TerminalBackendType`: local/docker/ssh/modal/daytona/singularity
+- `TerminalExecuteResult`: stdout/stderr/exitCode/timedOut/interrupted
+- 常量: DEFAULT_TIMEOUT=60, MAX_FOREGROUND_TIMEOUT=600
+
+#### dangerous.ts - 危险命令检测
+
+- `stripAnsi()`: 剥离ANSI控制字符
+- `normalizeCommandForDetection()`: Unicode NFKC规范化（防止fullwidth字符绕过）
+- `detectDangerousCommand()`: 模式匹配检测
+- `getSessionApprovedPatterns()`: 会话级审批状态
+- `approvePatternForSession()`: 添加审批
+- `checkDangerousCommandPermission()`: 权限系统集成（返回allow/ask/deny）
+- `buildApprovalRequestMessage()`: 构建审批请求消息
+
+#### local.ts - 本地执行后端
+
+- `sanitizeSubprocessEnv()`: 过滤API密钥防止泄露
+- `findBash()`: 跨平台bash定位（Unix/Windows Git Bash）
+- `executeLocalCommand()`: spawn-per-call执行模型
+- `killLocalProcess()`: 进程组终止（Unix: killpg, Windows: taskkill）
+
+#### backend-manager.ts - 后端管理器
+
+- `TerminalBackendManager`: 统一执行接口
+  - `execute()`: 先检查危险命令，再执行
+  - `executeUnchecked()`: 绕过检测（仅内部使用）
+- `registerTerminalBackend()`: 后端注册
+- `getAvailableBackendTypes()`: 获取可用后端列表
+- 便捷函数: `quickExecute()`, `isDangerous()`
+
+### 验证结果
+
+- ✅ TypeScript编译通过
+- ✅ Lint检查通过 (0 errors/warnings)
+- ✅ Import cycles通过 (0 cycles)
+- ✅ 测试全部通过 (41 tests passed)
+
+### 下一步工作
+
+模块已完成，需要：
+
+1. 与现有sandbox模块桥接（docker/ssh后端）
+2. 与Phase 6权限系统深度集成（审批流程）
+3. 添加modal/daytona/singularity后端支持
 
 ### 参考源码
 
-- Hermes: `hermes-agent/tools/terminal_tool.py` (后端创建逻辑)
+- Hermes: `hermes-agent/tools/approval.py` (DANGEROUS_PATTERNS)
 - Hermes: `hermes-agent/tools/environments/base.py` (BaseEnvironment)
-- Hermes: `hermes-agent/tools/environments/docker.py` (安全配置)
-- OpenClaw: `src/terminal/` (现有终端相关代码)
+- Hermes: `hermes-agent/tools/environments/local.py` (LocalEnvironment)
+- OpenClaw: `src/agents/sandbox/docker-backend.ts` (已有Docker后端)
+- OpenClaw: `src/agents/sandbox/ssh-backend.ts` (已有SSH后端)
 
 ---
 
