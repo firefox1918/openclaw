@@ -587,20 +587,22 @@ Phase 6.2 融入已完成。权限系统现在可以：
 
 ## Phase 1: 记忆系统工程化 [中优先级]
 
-**状态**: ✅ 已完成 (核心模块)
-**实际工作量**: 1天
-**文件数量**: 6个文件
+**状态**: ✅ 已完成 (核心模块 + 运行时集成)
+**实际工作量**: 1天 (核心) + 0.5天 (集成)
+**文件数量**: 7个文件
 
 ### 文件清单
 
-| 文件路径                          | 操作 | 状态                        |
-| --------------------------------- | ---- | --------------------------- |
-| `src/memory/memory-types.ts`      | 新建 | ✅ 已完成                   |
-| `src/memory/memory-index.ts`      | 新建 | ✅ 已完成                   |
-| `src/memory/memory-manager.ts`    | 新建 | ✅ 已完成                   |
-| `src/memory/memory-truncation.ts` | 新建 | ✅ 已完成                   |
-| `src/memory/index.ts`             | 新建 | ✅ 已完成                   |
-| `src/memory/index.test.ts`        | 新建 | ✅ 已完成 (43 tests passed) |
+| 文件路径                               | 操作 | 状态                        |
+| -------------------------------------- | ---- | --------------------------- |
+| `src/memory/memory-types.ts`           | 新建 | ✅ 已完成                   |
+| `src/memory/memory-index.ts`           | 新建 | ✅ 已完成                   |
+| `src/memory/memory-manager.ts`         | 新建 | ✅ 已完成                   |
+| `src/memory/memory-truncation.ts`      | 新建 | ✅ 已完成                   |
+| `src/memory/index.ts`                  | 新建 | ✅ 已完成                   |
+| `src/memory/index.test.ts`             | 新建 | ✅ 已完成 (43 tests passed) |
+| `src/agents/memory-runtime.ts`         | 新建 | ✅ 已完成 (运行时桥接)      |
+| `src/agents/pi-embedded-runner/run.ts` | 集成 | ✅ 已完成 (启动初始化)      |
 
 ### 实现内容
 
@@ -663,14 +665,28 @@ Phase 6.2 融入已完成。权限系统现在可以：
 - ✅ TypeScript编译通过 (lint clean)
 - ✅ 测试全部通过 (43 tests passed)
 
-### 下一步工作
+### 运行时集成内容 (Phase 1-B)
 
-模块已完成，需要在运行时集成：
+**完成时间**: 2026-04-16
 
-1. 在会话启动时创建 MemoryManager
-2. 将记忆内容注入系统提示
-3. 会话结束时清理过期记忆
-4. 与 compaction 模块配合（压缩时保留记忆）
+创建 `memory-runtime.ts` 桥接模块：
+
+1. **initializeMemoryRuntime()**: 会话启动初始化
+   - 创建 projectMemoryManager 和 sessionMemoryManager
+   - 注册 prompt supplement builder 到 memory-state.ts
+   - 清理过期会话记忆
+
+2. **createMemoryPromptBuilder()**: 系统提示注入
+   - 格式化记忆条目按类型分组
+   - 返回 Markdown 格式提示内容
+
+3. **cleanupSessionMemory()**: 会话结束清理接口
+
+**集成点**:
+
+- `src/agents/memory-runtime.ts`: 桥接模块
+- `src/agents/pi-embedded-runner/run.ts:428-437`: 启动初始化
+- `src/plugins/memory-state.ts`: prompt supplement 注册
 
 ### 参考源码
 
@@ -900,15 +916,15 @@ bash-tools.exec.ts execute()
 
 ## 总进度
 
-| Phase                    | 状态             | 进度             |
-| ------------------------ | ---------------- | ---------------- |
-| Phase 6.1 (权限模块实现) | ✅ 已完成        | 100%             |
-| Phase 6.2 (权限融入)     | ✅ 已完成        | 100%             |
-| Phase 2 (上下文管理)     | ✅ 模块+集成完成 | 100%             |
-| Phase 1 (记忆系统)       | ✅ 核心模块完成  | 85% (集成待完成) |
-| Phase 3 (终端执行)       | ✅ 模块+桥接完成 | 100%             |
-| Phase 4 (技能系统)       | ⏳ 待开始        | 0%               |
-| Phase 5 (任务/Fork)      | ⏳ 待开始        | 0%               |
+| Phase                    | 状态             | 进度 |
+| ------------------------ | ---------------- | ---- |
+| Phase 6.1 (权限模块实现) | ✅ 已完成        | 100% |
+| Phase 6.2 (权限融入)     | ✅ 已完成        | 100% |
+| Phase 2 (上下文管理)     | ✅ 模块+集成完成 | 100% |
+| Phase 1 (记忆系统)       | ✅ 模块+集成完成 | 100% |
+| Phase 3 (终端执行)       | ✅ 模块+桥接完成 | 100% |
+| Phase 4 (技能系统)       | ⏳ 待开始        | 0%   |
+| Phase 5 (任务/Fork)      | ⏳ 待开始        | 0%   |
 
 ---
 
@@ -1016,11 +1032,10 @@ pnpm install && pnpm build
 ├── Phase 6.1: permissions模块 (6文件, 28 tests)
 ├── Phase 6.2: 权限融入 (4文件修改)
 ├── Phase 2: compaction模块 + run.ts集成 (7文件, 35 tests)
-├── Phase 1: memory模块 (6文件, 43 tests)
+├── Phase 1: memory模块 + 运行时集成 (8文件, 43 tests)
 └── Phase 3: terminal模块 + bash-tools桥接 (11文件, 79 tests)
 
 待完成:
-├── Phase 1 集成: 会话启动/结束时的记忆管理
 ├── Phase 4: 技能系统 (6文件)
 └── Phase 5: 任务/Fork (9文件)
 ```
@@ -1035,16 +1050,7 @@ pnpm install && pnpm build
 → 参考 Hermes: tools/skills_tool.py
 ```
 
-**选项 B - 集成Phase 1记忆模块**:
-
-```
-集成 Phase 1 记忆系统到运行时
-→ 修改会话启动/结束逻辑
-→ 添加 MemoryManager 初始化
-→ 将记忆内容注入系统提示
-```
-
-**选项 C - 完成Phase 3后端扩展**:
+**选项 B - 完成Phase 3后端扩展**:
 
 ```
 桥接现有sandbox后端到terminal模块
@@ -1053,18 +1059,27 @@ pnpm install && pnpm build
 → 测试危险命令在各后端的检测
 ```
 
+**选项 C - 开始Phase 5任务系统**:
+
+```
+实现任务数据结构和依赖图管理
+→ 参考 Claude Code: src/utils/tasks.ts
+→ 创建 src/agents/tasks/ 目录
+```
+
 ### 关键文件快速参考
 
-| 文件                                            | 用途                                      |
-| ----------------------------------------------- | ----------------------------------------- |
-| `src/agents/permissions/index.ts`               | 权限模块入口                              |
-| `src/agents/compaction/index.ts`                | 压缩模块入口                              |
-| `src/agents/terminal/index.ts`                  | 终端模块入口（危险命令检测）              |
-| `src/agents/bash-tools.exec-dangerous-check.ts` | 危险命令审批桥接                          |
-| `src/memory/index.ts`                           | 记忆模块入口                              |
-| `src/agents/pi-tools.ts`                        | 工具组装核心（权限已集成）                |
-| `src/agents/bash-tools.exec.ts`                 | Bash执行核心（危险检测已集成）            |
-| `src/agents/pi-embedded-runner/run.ts`          | Agent运行核心（熔断器已集成，记忆待集成） |
+| 文件                                            | 用途                               |
+| ----------------------------------------------- | ---------------------------------- |
+| `src/agents/permissions/index.ts`               | 权限模块入口                       |
+| `src/agents/compaction/index.ts`                | 压缩模块入口                       |
+| `src/agents/terminal/index.ts`                  | 终端模块入口（危险命令检测）       |
+| `src/agents/bash-tools.exec-dangerous-check.ts` | 危险命令审批桥接                   |
+| `src/memory/index.ts`                           | 记忆模块入口                       |
+| `src/agents/memory-runtime.ts`                  | 记忆运行时桥接（已集成）           |
+| `src/agents/pi-tools.ts`                        | 工具组装核心（权限已集成）         |
+| `src/agents/bash-tools.exec.ts`                 | Bash执行核心（危险检测已集成）     |
+| `src/agents/pi-embedded-runner/run.ts`          | Agent运行核心（熔断器+记忆已集成） |
 
 ### 验证命令
 
@@ -1109,3 +1124,4 @@ pnpm test -- src/agents/terminal
 - 2026-04-15: Phase 3 推送到 origin/feature/fusion-claude-hermes (commit 845b0e3f1d)
 - 2026-04-16: Phase 3-B 完成 - bash-tools.exec危险检测桥接集成 (79 tests passed)
 - 2026-04-16: Phase 2 集成完成 - pi-embedded-runner/run.ts熔断器集成
+- 2026-04-16: Phase 1 集成完成 - memory-runtime.ts桥接模块、run.ts启动初始化
