@@ -39,6 +39,7 @@ import {
 } from "../failover-error.js";
 import { LiveSessionModelSwitchError } from "../live-model-switch-error.js";
 import { shouldSwitchToLiveModel, clearLiveModelSwitchPending } from "../live-model-switch.js";
+import { initializeMemoryRuntime } from "../memory-runtime.js";
 import {
   applyAuthHeaderOverride,
   applyLocalNoAuthHeaderOverride,
@@ -422,6 +423,19 @@ export async function runEmbeddedPiAgent(
 
       // Phase 2: Compaction engineering - circuit breaker for overflow recovery
       const compactionCircuitBreaker = createCompactionCircuitBreaker();
+
+      // Phase 1: Memory runtime integration - load project memory
+      // Note: Memory prompt supplement is registered automatically
+      const memoryRuntime = await initializeMemoryRuntime({
+        projectDir: agentDir,
+        agentId: params.agentId,
+        sessionKey: effectiveSessionKey,
+      });
+      const { projectMemoryManager } = memoryRuntime;
+      const projectMemoryStats = projectMemoryManager.getEntries().length;
+      if (projectMemoryStats > 0) {
+        log.info(`Loaded ${projectMemoryStats} project memory entries`);
+      }
 
       let overflowCompactionAttempts = 0;
       let toolResultTruncationAttempted = false;
