@@ -480,9 +480,9 @@ Phase 6.2 融入已完成。权限系统现在可以：
 
 ## Phase 2: 上下文管理工程化 [高优先级]
 
-**状态**: ✅ 已完成 (核心模块)
-**实际工作量**: 1天
-**文件数量**: 6个文件
+**状态**: ✅ 已完成 (核心模块 + run.ts集成)
+**实际工作量**: 1天 (核心) + 0.5天 (集成)
+**文件数量**: 7个文件
 
 ### 文件清单
 
@@ -494,7 +494,7 @@ Phase 6.2 融入已完成。权限系统现在可以：
 | `src/agents/compaction/recursion-guard.ts`   | 新建 | ✅ 已完成                   |
 | `src/agents/compaction/index.ts`             | 新建 | ✅ 已完成                   |
 | `src/agents/compaction/index.test.ts`        | 新建 | ✅ 已完成 (35 tests passed) |
-| `src/agents/pi-embedded-runner/run.ts`       | 集成 | ⏳ 待集成                   |
+| `src/agents/pi-embedded-runner/run.ts`       | 集成 | ✅ 已完成 (熔断器集成)      |
 
 ### 实现内容
 
@@ -552,16 +552,30 @@ Phase 6.2 融入已完成。权限系统现在可以：
 ### 验证结果
 
 - ✅ TypeScript编译通过 (pnpm tsgo)
+- ✅ Lint检查通过 (pnpm lint)
+- ✅ Import cycles通过 (0 cycles)
 - ✅ 测试全部通过 (35 tests passed)
 
-### 下一步工作
+### run.ts 集成内容 (Phase 2-B)
 
-模块已完成，需要在 `pi-embedded-runner/run.ts` 中集成：
+**完成时间**: 2026-04-16
 
-1. 在运行时创建 CircuitBreaker 和 ThresholdManager
-2. 在压缩触发前调用 `makeCompactionDecision()`
-3. 压缩成功/失败后调用 `recordSuccess/recordFailure()`
-4. 使用 `runInCompactionContext()` 追踪递归
+在 `pi-embedded-runner/run.ts` 中集成熔断器：
+
+1. **初始化**: 创建 `compactionCircuitBreaker` 在运行循环开始时
+2. **Timeout Compaction**: 检查熔断器状态，通过则执行；记录成功/失败
+3. **Overflow Compaction**: 检查熔断器状态，通过则执行；记录成功/失败
+4. **递归追踪**: 使用 `runInCompactionContext()` 包装压缩调用
+
+**集成点**:
+
+- Line ~31: 导入 compaction 模块
+- Line ~430: 创建熔断器实例
+- Line ~850: Timeout compaction 熔断器检查
+- Line ~893: Timeout compaction 结果记录
+- Line ~996-1000: Overflow compaction 熔断器检查
+- Line ~1060: Overflow compaction 成功记录
+- Line ~1085: Overflow compaction 失败记录
 
 ### 参考源码
 
@@ -890,7 +904,7 @@ bash-tools.exec.ts execute()
 | ------------------------ | ---------------- | ---------------- |
 | Phase 6.1 (权限模块实现) | ✅ 已完成        | 100%             |
 | Phase 6.2 (权限融入)     | ✅ 已完成        | 100%             |
-| Phase 2 (上下文管理)     | ✅ 核心模块完成  | 85% (集成待完成) |
+| Phase 2 (上下文管理)     | ✅ 模块+集成完成 | 100%             |
 | Phase 1 (记忆系统)       | ✅ 核心模块完成  | 85% (集成待完成) |
 | Phase 3 (终端执行)       | ✅ 模块+桥接完成 | 100%             |
 | Phase 4 (技能系统)       | ⏳ 待开始        | 0%               |
@@ -1001,12 +1015,11 @@ pnpm install && pnpm build
 已完成:
 ├── Phase 6.1: permissions模块 (6文件, 28 tests)
 ├── Phase 6.2: 权限融入 (4文件修改)
-├── Phase 2: compaction模块 (6文件, 35 tests)
+├── Phase 2: compaction模块 + run.ts集成 (7文件, 35 tests)
 ├── Phase 1: memory模块 (6文件, 43 tests)
 └── Phase 3: terminal模块 + bash-tools桥接 (11文件, 79 tests)
 
 待完成:
-├── Phase 2 集成: pi-embedded-runner/run.ts
 ├── Phase 1 集成: 会话启动/结束时的记忆管理
 ├── Phase 4: 技能系统 (6文件)
 └── Phase 5: 任务/Fork (9文件)
@@ -1022,12 +1035,13 @@ pnpm install && pnpm build
 → 参考 Hermes: tools/skills_tool.py
 ```
 
-**选项 B - 集成已完成模块**:
+**选项 B - 集成Phase 1记忆模块**:
 
 ```
-集成 Phase 2 + Phase 1 到运行时
-→ 修改 src/agents/pi-embedded-runner/run.ts
-→ 添加 CircuitBreaker, ThresholdManager, MemoryManager 初始化
+集成 Phase 1 记忆系统到运行时
+→ 修改会话启动/结束逻辑
+→ 添加 MemoryManager 初始化
+→ 将记忆内容注入系统提示
 ```
 
 **选项 C - 完成Phase 3后端扩展**:
@@ -1041,16 +1055,16 @@ pnpm install && pnpm build
 
 ### 关键文件快速参考
 
-| 文件                                            | 用途                                     |
-| ----------------------------------------------- | ---------------------------------------- |
-| `src/agents/permissions/index.ts`               | 权限模块入口                             |
-| `src/agents/compaction/index.ts`                | 压缩模块入口                             |
-| `src/agents/terminal/index.ts`                  | 终端模块入口（危险命令检测）             |
-| `src/agents/bash-tools.exec-dangerous-check.ts` | 危险命令审批桥接                         |
-| `src/memory/index.ts`                           | 记忆模块入口                             |
-| `src/agents/pi-tools.ts`                        | 工具组装核心（权限已集成）               |
-| `src/agents/bash-tools.exec.ts`                 | Bash执行核心（危险检测已集成）           |
-| `src/agents/pi-embedded-runner/run.ts`          | Agent运行核心（待集成compaction/memory） |
+| 文件                                            | 用途                                      |
+| ----------------------------------------------- | ----------------------------------------- |
+| `src/agents/permissions/index.ts`               | 权限模块入口                              |
+| `src/agents/compaction/index.ts`                | 压缩模块入口                              |
+| `src/agents/terminal/index.ts`                  | 终端模块入口（危险命令检测）              |
+| `src/agents/bash-tools.exec-dangerous-check.ts` | 危险命令审批桥接                          |
+| `src/memory/index.ts`                           | 记忆模块入口                              |
+| `src/agents/pi-tools.ts`                        | 工具组装核心（权限已集成）                |
+| `src/agents/bash-tools.exec.ts`                 | Bash执行核心（危险检测已集成）            |
+| `src/agents/pi-embedded-runner/run.ts`          | Agent运行核心（熔断器已集成，记忆待集成） |
 
 ### 验证命令
 
@@ -1093,3 +1107,5 @@ pnpm test -- src/agents/terminal
 - 2026-04-15: Phase 3 完成 - 创建 terminal/types.ts, dangerous.ts, local.ts, backend-manager.ts, index.ts, index.test.ts (41 tests passed)
 - 2026-04-15: Phase 3 功能自测验证通过 - 危险命令检测、obfuscation防护、session approval流程
 - 2026-04-15: Phase 3 推送到 origin/feature/fusion-claude-hermes (commit 845b0e3f1d)
+- 2026-04-16: Phase 3-B 完成 - bash-tools.exec危险检测桥接集成 (79 tests passed)
+- 2026-04-16: Phase 2 集成完成 - pi-embedded-runner/run.ts熔断器集成
