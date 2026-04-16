@@ -20,6 +20,7 @@ import { normalizeDeliveryContext } from "../utils/delivery-context.js";
 import { splitShellArgs } from "../utils/shell-argv.js";
 import { markBackgrounded } from "./bash-process-registry.js";
 import { describeExecTool } from "./bash-tools.descriptions.js";
+import { checkDangerousCommandAndRequestApproval } from "./bash-tools.exec-dangerous-check.js";
 import { processGatewayAllowlist } from "./bash-tools.exec-host-gateway.js";
 import { executeNodeHostCommand } from "./bash-tools.exec-host-node.js";
 import {
@@ -1505,6 +1506,25 @@ export function createExecTool(
         workdir = resolveWorkdir(rawWorkdir, warnings);
       }
       rejectExecApprovalShellCommand(params.command);
+
+      // Dangerous command detection and approval flow
+      const dangerousCheck = await checkDangerousCommandAndRequestApproval({
+        command: params.command,
+        sessionKey: defaults?.sessionKey,
+        agentId,
+        turnSourceChannel: defaults?.messageProvider,
+        turnSourceAccountId: defaults?.accountId,
+        trigger: defaults?.trigger,
+        warnings,
+      });
+
+      if (dangerousCheck.blocked) {
+        throw new Error(dangerousCheck.reason ?? "Dangerous command blocked");
+      }
+
+      if (dangerousCheck.approvedPatternKey) {
+        warnings.push(`Approved dangerous pattern: ${dangerousCheck.approvedPatternKey}`);
+      }
 
       const inheritedBaseEnv = coerceEnv(process.env);
       const hostEnvResult =
