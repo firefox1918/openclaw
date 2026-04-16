@@ -11,6 +11,22 @@ import type {
 } from "./types.base.js";
 import type { MemorySearchConfig } from "./types.tools.js";
 
+/**
+ * Permission mode for agent execution.
+ * Controls how permissions are handled during tool execution.
+ * - "default": Standard permission prompts (default)
+ * - "plan": Planning mode - prepare actions but don't execute
+ * - "acceptEdits": Auto-accept edits without prompts
+ * - "bypassPermissions": Skip all permission checks (requires admin scope)
+ * - "dontAsk": Suppress permission prompts where possible
+ */
+export type PermissionModeConfig =
+  | "default"
+  | "plan"
+  | "acceptEdits"
+  | "bypassPermissions"
+  | "dontAsk";
+
 export type AgentContextInjection = "always" | "continuation-skip";
 export type EmbeddedPiExecutionContract = "default" | "strict-agentic";
 
@@ -233,6 +249,8 @@ export type AgentDefaultsConfig = {
   llm?: AgentLlmConfig;
   /** Compaction tuning and pre-compaction memory flush behavior. */
   compaction?: AgentCompactionConfig;
+  /** Permission mode for tool execution (default, plan, acceptEdits, bypassPermissions, dontAsk). */
+  permissionMode?: PermissionModeConfig;
   /** Embedded Pi runner hardening and compatibility controls. */
   embeddedPi?: {
     /**

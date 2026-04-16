@@ -840,6 +840,16 @@ export const AgentEntrySchema = z
     params: z.record(z.string(), z.unknown()).optional(),
     tools: AgentToolsSchema,
     runtime: AgentRuntimeSchema,
+    permissionMode: z
+      .union([
+        z.literal("default"),
+        z.literal("plan"),
+        z.literal("acceptEdits"),
+        z.literal("bypassPermissions"),
+        z.literal("dontAsk"),
+      ])
+      .optional()
+      .describe("Permission mode for agent tool execution"),
   })
   .strict();
 

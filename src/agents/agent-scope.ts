@@ -59,6 +59,7 @@ type ResolvedAgentConfig = {
   embeddedPi?: AgentEntry["embeddedPi"];
   sandbox?: AgentEntry["sandbox"];
   tools?: AgentEntry["tools"];
+  permissionMode?: AgentEntry["permissionMode"];
 };
 
 let defaultAgentWarned = false;
@@ -168,6 +169,7 @@ export function resolveAgentConfig(
       typeof entry.embeddedPi === "object" && entry.embeddedPi ? entry.embeddedPi : undefined,
     sandbox: entry.sandbox,
     tools: entry.tools,
+    permissionMode: entry.permissionMode ?? agentDefaults?.permissionMode,
   };
 }
 
@@ -274,6 +276,22 @@ export function resolveEffectiveModelFallbacks(params: {
   }
   const defaultFallbacks = resolveAgentModelFallbackValues(params.cfg.agents?.defaults?.model);
   return agentFallbacksOverride ?? defaultFallbacks;
+}
+
+/**
+ * Resolve permission mode for an agent.
+ * Falls back to agents.defaults.permissionMode if not set per-agent.
+ */
+export function resolveAgentPermissionMode(
+  cfg: OpenClawConfig | undefined,
+  agentId?: string | null,
+): AgentDefaultsConfig["permissionMode"] | undefined {
+  const defaultMode = cfg?.agents?.defaults?.permissionMode;
+  if (!cfg || !agentId) {
+    return defaultMode;
+  }
+  const agentMode = resolveAgentConfig(cfg, agentId)?.permissionMode;
+  return agentMode ?? defaultMode;
 }
 
 export function resolveAgentWorkspaceDir(cfg: OpenClawConfig, agentId: string) {

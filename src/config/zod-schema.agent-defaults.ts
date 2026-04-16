@@ -239,6 +239,16 @@ export const AgentDefaultsSchema = z
       .strict()
       .optional(),
     sandbox: AgentSandboxSchema,
+    permissionMode: z
+      .union([
+        z.literal("default"),
+        z.literal("plan"),
+        z.literal("acceptEdits"),
+        z.literal("bypassPermissions"),
+        z.literal("dontAsk"),
+      ])
+      .optional()
+      .describe("Permission mode for agent tool execution"),
   })
   .strict()
   .optional();

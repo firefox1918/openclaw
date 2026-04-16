@@ -11,7 +11,7 @@ import {
   normalizeOptionalLowercaseString,
 } from "../shared/string-coerce.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
-import { resolveAgentConfig } from "./agent-scope.js";
+import { resolveAgentConfig, resolveAgentPermissionMode } from "./agent-scope.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import { describeExecTool, describeProcessTool } from "./bash-tools.descriptions.js";
 import type { ExecToolDefaults } from "./bash-tools.exec-types.js";
@@ -669,6 +669,7 @@ export function createOpenClawCodingTools(options?: {
   );
 
   // Build permission config from policies for runtime permission checking
+  const permissionMode = resolveAgentPermissionMode(options?.config, agentId);
   const permissionConfig = buildPermissionConfigFromPolicies({
     globalPolicy,
     globalProviderPolicy,
@@ -677,6 +678,7 @@ export function createOpenClawCodingTools(options?: {
     groupPolicy,
     sandboxToolPolicy,
     subagentPolicy,
+    defaultMode: permissionMode,
   });
 
   const withHooks = normalized.map((tool) =>

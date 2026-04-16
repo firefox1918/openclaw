@@ -1,5 +1,9 @@
 import type { ChatType } from "../channels/chat-type.js";
-import type { AgentDefaultsConfig, EmbeddedPiExecutionContract } from "./types.agent-defaults.js";
+import type {
+  AgentDefaultsConfig,
+  EmbeddedPiExecutionContract,
+  PermissionModeConfig,
+} from "./types.agent-defaults.js";
 import type {
   AgentEmbeddedHarnessConfig,
   AgentModelConfig,
@@ -110,6 +114,8 @@ export type AgentConfig = {
   tools?: AgentToolsConfig;
   /** Optional runtime descriptor for this agent. */
   runtime?: AgentRuntimeConfig;
+  /** Optional per-agent permission mode override. */
+  permissionMode?: PermissionModeConfig;
 };
 
 export type AgentsConfig = {
