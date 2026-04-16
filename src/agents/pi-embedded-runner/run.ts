@@ -28,6 +28,7 @@ import {
   resolveSessionKeyForRequest,
   resolveStoredSessionKeyForSessionId,
 } from "../command/session.js";
+import { createCompactionCircuitBreaker, runInCompactionContext } from "../compaction/index.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { isStrictAgenticExecutionContractActive } from "../execution-contract.js";
 import {
@@ -418,6 +419,10 @@ export async function runEmbeddedPiAgent(
       const MAX_TIMEOUT_COMPACTION_ATTEMPTS = 2;
       const MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3;
       const MAX_RUN_LOOP_ITERATIONS = resolveMaxRunRetryIterations(profileCandidates.length);
+
+      // Phase 2: Compaction engineering - circuit breaker for overflow recovery
+      const compactionCircuitBreaker = createCompactionCircuitBreaker();
+
       let overflowCompactionAttempts = 0;
       let toolResultTruncationAttempted = false;
       let bootstrapPromptWarningSignaturesSeen =
@@ -832,6 +837,11 @@ export async function runEmbeddedPiAgent(
               log.warn(
                 `[timeout-compaction] already attempted timeout compaction ${timeoutCompactionAttempts} time(s); falling through to failover rotation`,
               );
+            } else if (!compactionCircuitBreaker.isAllowed()) {
+              // Phase 2: Circuit breaker is open, skip compaction
+              log.warn(
+                `[timeout-compaction] circuit breaker blocked compaction for ${provider}/${modelId}; state=${compactionCircuitBreaker.getStatus().state}`,
+              );
             } else if (tokenUsedRatio > 0.65) {
               const timeoutDiagId = createCompactionDiagId();
               timeoutCompactionAttempts++;
@@ -873,15 +883,19 @@ export async function runEmbeddedPiAgent(
                   attempt: timeoutCompactionAttempts,
                   maxAttempts: MAX_TIMEOUT_COMPACTION_ATTEMPTS,
                 };
-                timeoutCompactResult = await contextEngine.compact({
-                  sessionId: params.sessionId,
-                  sessionKey: params.sessionKey,
-                  sessionFile: params.sessionFile,
-                  tokenBudget: ctxInfo.tokens,
-                  force: true,
-                  compactionTarget: "budget",
-                  runtimeContext: timeoutCompactionRuntimeContext,
-                });
+                timeoutCompactResult = await runInCompactionContext(
+                  params.sessionKey ?? params.sessionId,
+                  () =>
+                    contextEngine.compact({
+                      sessionId: params.sessionId,
+                      sessionKey: params.sessionKey,
+                      sessionFile: params.sessionFile,
+                      tokenBudget: ctxInfo.tokens,
+                      force: true,
+                      compactionTarget: "budget",
+                      runtimeContext: timeoutCompactionRuntimeContext,
+                    }),
+                );
               } catch (compactErr) {
                 log.warn(
                   `[timeout-compaction] contextEngine.compact() threw during timeout recovery for ${provider}/${modelId}: ${String(compactErr)}`,
@@ -891,9 +905,13 @@ export async function runEmbeddedPiAgent(
                   compacted: false,
                   reason: String(compactErr),
                 };
+                // Phase 2: Record compaction failure
+                compactionCircuitBreaker.recordFailure(String(compactErr));
               }
               await runOwnsCompactionAfterHook("timeout recovery", timeoutCompactResult);
               if (timeoutCompactResult.compacted) {
+                // Phase 2: Record compaction success
+                compactionCircuitBreaker.recordSuccess();
                 autoCompactionCount += 1;
                 if (contextEngine.info.ownsCompaction === true) {
                   await runPostCompactionSideEffects({
@@ -968,7 +986,8 @@ export async function runEmbeddedPiAgent(
             if (
               !isCompactionFailure &&
               !hadAttemptLevelCompaction &&
-              overflowCompactionAttempts < MAX_OVERFLOW_COMPACTION_ATTEMPTS
+              overflowCompactionAttempts < MAX_OVERFLOW_COMPACTION_ATTEMPTS &&
+              compactionCircuitBreaker.isAllowed() // Phase 2: Circuit breaker check
             ) {
               if (log.isEnabled("debug")) {
                 log.debug(
@@ -1018,19 +1037,25 @@ export async function runEmbeddedPiAgent(
                   attempt: overflowCompactionAttempts,
                   maxAttempts: MAX_OVERFLOW_COMPACTION_ATTEMPTS,
                 };
-                compactResult = await contextEngine.compact({
-                  sessionId: params.sessionId,
-                  sessionKey: params.sessionKey,
-                  sessionFile: params.sessionFile,
-                  tokenBudget: ctxInfo.tokens,
-                  ...(observedOverflowTokens !== undefined
-                    ? { currentTokenCount: observedOverflowTokens }
-                    : {}),
-                  force: true,
-                  compactionTarget: "budget",
-                  runtimeContext: overflowCompactionRuntimeContext,
-                });
+                compactResult = await runInCompactionContext(
+                  params.sessionKey ?? params.sessionId,
+                  () =>
+                    contextEngine.compact({
+                      sessionId: params.sessionId,
+                      sessionKey: params.sessionKey,
+                      sessionFile: params.sessionFile,
+                      tokenBudget: ctxInfo.tokens,
+                      ...(observedOverflowTokens !== undefined
+                        ? { currentTokenCount: observedOverflowTokens }
+                        : {}),
+                      force: true,
+                      compactionTarget: "budget",
+                      runtimeContext: overflowCompactionRuntimeContext,
+                    }),
+                );
                 if (compactResult.ok && compactResult.compacted) {
+                  // Phase 2: Record compaction success
+                  compactionCircuitBreaker.recordSuccess();
                   await runContextEngineMaintenance({
                     contextEngine,
                     sessionId: params.sessionId,
@@ -1044,6 +1069,8 @@ export async function runEmbeddedPiAgent(
                 log.warn(
                   `contextEngine.compact() threw during overflow recovery for ${provider}/${modelId}: ${String(compactErr)}`,
                 );
+                // Phase 2: Record compaction failure
+                compactionCircuitBreaker.recordFailure(String(compactErr));
                 compactResult = {
                   ok: false,
                   compacted: false,
@@ -1075,8 +1102,21 @@ export async function runEmbeddedPiAgent(
                 log.info(`auto-compaction succeeded for ${provider}/${modelId}; retrying prompt`);
                 continue;
               }
+              // Phase 2: Record compaction failure when didn't reduce context
+              compactionCircuitBreaker.recordFailure(compactResult.reason ?? "nothing to compact");
               log.warn(
                 `auto-compaction failed for ${provider}/${modelId}: ${compactResult.reason ?? "nothing to compact"}`,
+              );
+            } else if (
+              !isCompactionFailure &&
+              !hadAttemptLevelCompaction &&
+              overflowCompactionAttempts < MAX_OVERFLOW_COMPACTION_ATTEMPTS &&
+              !compactionCircuitBreaker.isAllowed()
+            ) {
+              // Phase 2: Circuit breaker blocked overflow compaction
+              log.warn(
+                `[context-overflow] circuit breaker blocked compaction for ${provider}/${modelId}; ` +
+                  `state=${compactionCircuitBreaker.getStatus().state} reason=${compactionCircuitBreaker.getBlockReason() ?? "unknown"}`,
               );
             }
             if (!toolResultTruncationAttempted) {
