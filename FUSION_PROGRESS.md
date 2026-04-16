@@ -669,11 +669,13 @@ Phase 6.2 融入已完成。权限系统现在可以：
 
 ## Phase 3: 终端执行能力 [中优先级]
 
-**状态**: ✅ 已完成 (核心模块 - 危险命令检测)
-**实际工作量**: 1天
-**文件数量**: 5个文件
+**状态**: ✅ 已完成 (核心模块 + bash-tools桥接)
+**实际工作量**: 2天
+**文件数量**: 11个文件
 
-### 文件清单
+### Phase 3-A: Terminal 模块核心实现
+
+#### 文件清单
 
 | 文件路径                                 | 操作 | 状态                        |
 | ---------------------------------------- | ---- | --------------------------- |
@@ -726,12 +728,74 @@ Phase 6.2 融入已完成。权限系统现在可以：
 - `getAvailableBackendTypes()`: 获取可用后端列表
 - 便捷函数: `quickExecute()`, `isDangerous()`
 
+### Phase 3-B: bash-tools.exec 桥接集成
+
+**状态**: ✅ 已完成
+**完成时间**: 2026-04-16
+
+#### 文件清单
+
+| 文件路径                                                   | 操作 | 状态                        |
+| ---------------------------------------------------------- | ---- | --------------------------- |
+| `src/agents/bash-tools.exec-dangerous-check.ts`            | 新建 | ✅ 已完成                   |
+| `src/agents/bash-tools.exec-dangerous-check.test.ts`       | 新建 | ✅ 已完成 (17 tests passed) |
+| `src/agents/bash-tools.exec-dangerous.integration.test.ts` | 新建 | ✅ 已完成 (21 tests passed) |
+| `src/agents/bash-tools.exec.ts`                            | 修改 | ✅ 已完成 (危险检测集成)    |
+| `src/agents/terminal/IMPLEMENTATION_PROGRESS.md`           | 新建 | ✅ 已完成                   |
+| `scripts/verify-dangerous-command-detection.sh`            | 新建 | ✅ 已完成                   |
+
+#### bash-tools.exec-dangerous-check.ts - 审批流程桥接
+
+- `checkDangerousCommandAndRequestApproval()`: 核心函数
+  - 调用 `checkDangerousCommandPermission()` 检测危险命令
+  - behavior="allow" → 直接返回 blocked=false
+  - behavior="deny" → 返回 blocked=true + reason
+  - trigger="cron" → 自动拒绝（headless模式）
+  - behavior="ask" → 触发Gateway审批流程
+- Gateway审批集成:
+  - `callGatewayTool("plugin.approval.request")`: 创建审批请求
+  - `callGatewayTool("plugin.approval.waitDecision")`: 等待用户决策
+  - 决策处理: ALLOW_ONCE → 执行, ALLOW_ALWAYS → 缓存审批, DENY → 拒绝
+- 会话级审批缓存: `approvePatternForSession()` 记录 allow-always 决策
+- AbortSignal支持: 运行取消时中断审批等待
+
+#### bash-tools.exec.ts - 执行点集成
+
+- Line 1508后插入危险检测（在 rejectExecApprovalShellCommand 之后）
+- 检测结果处理: blocked=true → throw Error
+- 审批通过: warnings 推送 approvedPatternKey 信息
+
+#### 执行流程
+
+```
+bash-tools.exec.ts execute()
+│
+├─ Line 1508: rejectExecApprovalShellCommand()
+│
+├─ ★ Line 1511-1527: checkDangerousCommandAndRequestApproval()
+│   ├─ checkDangerousCommandPermission() → 检测 30+ 模式
+│   ├─ behavior="allow" → 继续
+│   ├─ behavior="deny" → throw error
+│   ├─ trigger="cron" → 自动拒绝
+│   └─ behavior="ask" → Gateway 审批流程
+│       ├─ plugin.approval.request → 创建审批
+│       ├─ plugin.approval.waitDecision → 等待决策
+│       ├─ "allow-always" → approvePatternForSession()
+│       └─ "deny"/timeout → throw error
+│
+├─ Line 1529+: 现有流程继续
+```
+
 ### 验证结果
 
 - ✅ TypeScript编译通过
 - ✅ Lint检查通过 (0 errors/warnings)
 - ✅ Import cycles通过 (0 cycles)
-- ✅ 测试全部通过 (41 tests passed)
+- ✅ 测试全部通过 (79 tests passed)
+  - terminal/index.test.ts: 41 tests
+  - bash-tools.exec-dangerous-check.test.ts: 17 tests
+  - bash-tools.exec-dangerous.integration.test.ts: 21 tests
+- ✅ Git提交完成 (commit 20cbca1a1f)
 
 ### 下一步工作
 
@@ -822,15 +886,15 @@ Phase 6.2 融入已完成。权限系统现在可以：
 
 ## 总进度
 
-| Phase                    | 状态            | 进度             |
-| ------------------------ | --------------- | ---------------- |
-| Phase 6.1 (权限模块实现) | ✅ 已完成       | 100%             |
-| Phase 6.2 (权限融入)     | ✅ 已完成       | 100%             |
-| Phase 2 (上下文管理)     | ✅ 核心模块完成 | 85% (集成待完成) |
-| Phase 1 (记忆系统)       | ✅ 核心模块完成 | 85% (集成待完成) |
-| Phase 3 (终端执行)       | ✅ 核心模块完成 | 80% (集成待完成) |
-| Phase 4 (技能系统)       | ⏳ 待开始       | 0%               |
-| Phase 5 (任务/Fork)      | ⏳ 待开始       | 0%               |
+| Phase                    | 状态             | 进度             |
+| ------------------------ | ---------------- | ---------------- |
+| Phase 6.1 (权限模块实现) | ✅ 已完成        | 100%             |
+| Phase 6.2 (权限融入)     | ✅ 已完成        | 100%             |
+| Phase 2 (上下文管理)     | ✅ 核心模块完成  | 85% (集成待完成) |
+| Phase 1 (记忆系统)       | ✅ 核心模块完成  | 85% (集成待完成) |
+| Phase 3 (终端执行)       | ✅ 模块+桥接完成 | 100%             |
+| Phase 4 (技能系统)       | ⏳ 待开始        | 0%               |
+| Phase 5 (任务/Fork)      | ⏳ 待开始        | 0%               |
 
 ---
 
@@ -928,7 +992,7 @@ pnpm install && pnpm build
 如果 session 重置，请：
 
 1. **阅读此文件**: `FUSION_PROGRESS.md`
-2. **查看总进度表**: 确认当前完成状态（Phase 6.1/6.2/2/1 已完成）
+2. **查看总进度表**: 确认当前完成状态（Phase 6.1/6.2/2/1/3 已完成）
 3. **选择下一步工作**: 根据以下选项继续
 
 ### 当前状态总结
@@ -939,12 +1003,11 @@ pnpm install && pnpm build
 ├── Phase 6.2: 权限融入 (4文件修改)
 ├── Phase 2: compaction模块 (6文件, 35 tests)
 ├── Phase 1: memory模块 (6文件, 43 tests)
-└── Phase 3: terminal模块 (6文件, 41 tests)
+└── Phase 3: terminal模块 + bash-tools桥接 (11文件, 79 tests)
 
 待完成:
 ├── Phase 2 集成: pi-embedded-runner/run.ts
 ├── Phase 1 集成: 会话启动/结束时的记忆管理
-├── Phase 3 集成: bash-tools危险命令检测桥接
 ├── Phase 4: 技能系统 (6文件)
 └── Phase 5: 任务/Fork (9文件)
 ```
@@ -962,17 +1025,12 @@ pnpm install && pnpm build
 **选项 B - 集成已完成模块**:
 
 ```
-集成 Phase 3 (危险命令检测) 到 bash-tools
-→ 修改 src/agents/bash-tools.exec.ts
-→ 在命令执行前调用 detectDangerousCommand()
-→ ask行为复用现有approval流程
-
 集成 Phase 2 + Phase 1 到运行时
 → 修改 src/agents/pi-embedded-runner/run.ts
 → 添加 CircuitBreaker, ThresholdManager, MemoryManager 初始化
 ```
 
-**选项 C - 完成Phase 3后端集成**:
+**选项 C - 完成Phase 3后端扩展**:
 
 ```
 桥接现有sandbox后端到terminal模块
@@ -983,15 +1041,16 @@ pnpm install && pnpm build
 
 ### 关键文件快速参考
 
-| 文件                                   | 用途                                     |
-| -------------------------------------- | ---------------------------------------- |
-| `src/agents/permissions/index.ts`      | 权限模块入口                             |
-| `src/agents/compaction/index.ts`       | 压缩模块入口                             |
-| `src/agents/terminal/index.ts`         | 终端模块入口（危险命令检测）             |
-| `src/memory/index.ts`                  | 记忆模块入口                             |
-| `src/agents/pi-tools.ts`               | 工具组装核心（权限已集成）               |
-| `src/agents/bash-tools.exec.ts`        | Bash执行核心（待集成危险检测）           |
-| `src/agents/pi-embedded-runner/run.ts` | Agent运行核心（待集成compaction/memory） |
+| 文件                                            | 用途                                     |
+| ----------------------------------------------- | ---------------------------------------- |
+| `src/agents/permissions/index.ts`               | 权限模块入口                             |
+| `src/agents/compaction/index.ts`                | 压缩模块入口                             |
+| `src/agents/terminal/index.ts`                  | 终端模块入口（危险命令检测）             |
+| `src/agents/bash-tools.exec-dangerous-check.ts` | 危险命令审批桥接                         |
+| `src/memory/index.ts`                           | 记忆模块入口                             |
+| `src/agents/pi-tools.ts`                        | 工具组装核心（权限已集成）               |
+| `src/agents/bash-tools.exec.ts`                 | Bash执行核心（危险检测已集成）           |
+| `src/agents/pi-embedded-runner/run.ts`          | Agent运行核心（待集成compaction/memory） |
 
 ### 验证命令
 
