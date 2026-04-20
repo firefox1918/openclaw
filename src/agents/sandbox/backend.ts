@@ -1,3 +1,33 @@
+/**
+ * Sandbox backend factory and registry.
+ *
+ * Registers Docker and SSH backends for containerized execution.
+ *
+ * ## Relationship with Terminal Module
+ *
+ * The terminal module (`../terminal/`) handles:
+ * - Dangerous command detection (pattern-based security)
+ * - Local backend execution (host process spawn)
+ *
+ * This module (sandbox) handles:
+ * - Container-level isolation (Docker/SSH backends)
+ * - Security hardening (capDrop, no-new-privileges, pidsLimit)
+ * - Workspace lifecycle management
+ *
+ * **Integration**: `bash-tools.exec.ts` orchestrates:
+ * 1. Terminal module checks dangerous patterns first
+ * 2. Sandbox module executes if context available
+ * 3. Terminal module executes locally if no sandbox
+ *
+ * ## Backend Registration
+ *
+ * Backends are registered with:
+ * - `factory`: Creates backend handle from SandboxContext
+ * - `manager`: Lifecycle management (prune, status check)
+ *
+ * See `backend-handle.types.ts` for handle interface.
+ */
+
 import { normalizeOptionalLowercaseString } from "../../shared/string-coerce.js";
 import type {
   RegisteredSandboxBackend,

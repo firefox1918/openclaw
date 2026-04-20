@@ -3,6 +3,14 @@
  *
  * Provides dangerous command patterns, execution result types,
  * and backend configuration options.
+ *
+ * ## Backend Types vs Sandbox
+ *
+ * `TerminalBackendType` defines abstract backend types, but only "local"
+ * is registered in this module. Docker/SSH backends are implemented in
+ * the sandbox module with richer context (container lifecycle, mounts).
+ *
+ * See `backend-manager.ts` for module boundary documentation.
  */
 
 // ============================================================================
@@ -200,6 +208,10 @@ export type TerminalExecuteOptions = {
 
 /**
  * Terminal backend types supported.
+ *
+ * Note: Only "local" is registered in terminal module.
+ * Docker/SSH backends are in sandbox module with container context.
+ * Modal, Daytona, Singularity are placeholder types for future extensions.
  */
 export type TerminalBackendType = "local" | "docker" | "ssh" | "modal" | "daytona" | "singularity";
 

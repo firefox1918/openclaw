@@ -3,6 +3,31 @@
  *
  * Detects potentially destructive commands using pattern matching,
  * normalizes obfuscation attempts, and provides approval workflow integration.
+ *
+ * ## Pattern Source
+ *
+ * Patterns derived from Hermes Agent security practices, covering:
+ * - File system destruction (rm -rf, recursive delete)
+ * - Permission/ownership changes (chmod 777, chown root)
+ * - Disk/device operations (dd, mkfs)
+ * - SQL destructive operations (DROP, DELETE without WHERE)
+ * - System service manipulation (systemctl stop)
+ * - Process manipulation (kill -9, fork bombs)
+ * - Remote script execution (curl | sh)
+ * - Git destructive operations (reset --hard, force push)
+ *
+ * ## Integration Points
+ *
+ * 1. Terminal backend-manager: check before local execution
+ * 2. bash-tools.exec.ts: check before sandbox/local execution
+ * 3. Permission system (Phase 6): approval workflow trigger
+ *
+ * ## Security Notes
+ *
+ * - Patterns are regex-based, not semantically parsed
+ * - Obfuscation attempts are normalized (ANSI, null bytes, Unicode)
+ * - Approved patterns are session-scoped, not persistent
+ * - This is a safety layer, not a replacement for sandbox isolation
  */
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";

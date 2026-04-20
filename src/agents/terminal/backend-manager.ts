@@ -3,6 +3,47 @@
  *
  * Provides unified interface for terminal execution across multiple backends.
  * Integrates dangerous command detection with permission system.
+ *
+ * ## Module Boundaries (Phase 3 Architecture)
+ *
+ * This module and the sandbox module (`../sandbox/`) serve distinct purposes:
+ *
+ * **Terminal module** (`src/agents/terminal/`):
+ * - Command-level security: dangerous pattern detection (30+ patterns from Hermes)
+ * - Local backend execution (spawn child processes on host)
+ * - Session-scoped approval state management
+ * - Permission system integration (Phase 6)
+ *
+ * **Sandbox module** (`src/agents/sandbox/`):
+ * - Container-level isolation: Docker/SSH backends
+ * - Security hardening: capDrop, no-new-privileges, pidsLimit, tmpfs
+ * - Workspace lifecycle management
+ * - Filesystem bridge operations
+ *
+ * **Integration point** (`bash-tools.exec.ts`):
+ * - Flow: dangerous check → sandbox execution OR local execution
+ * - If sandbox context exists: delegate to sandbox backend
+ * - If no sandbox: use terminal module's local backend + dangerous detection
+ *
+ * ## Why Not Register Docker/SSH Backends Here
+ *
+ * Docker/SSH backends in sandbox module require `SandboxContext`:
+ * - Container lifecycle (create, ensure, prune)
+ * - Workspace mounts and sync
+ * - Security config (memory, cpus, network, capDrop)
+ *
+ * Terminal backend executor interface (`BackendExecutor`) is simpler:
+ * - Just execute a command and return result
+ * - No container lifecycle management
+ *
+ * To avoid duplicate registration and context mismatch, sandbox backends
+ * remain in their own module. Bash-tools.exec.ts orchestrates based on
+ * whether sandbox context is available.
+ *
+ * ## Usage
+ *
+ * For containerized execution: use sandbox module directly.
+ * For local execution with dangerous detection: use this module.
  */
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -36,14 +77,18 @@ interface BackendRegistration {
 
 const BACKEND_REGISTRY: Map<TerminalBackendType, BackendRegistration> = new Map();
 
-// Register local backend
+// Register local backend (host process spawn)
 BACKEND_REGISTRY.set("local", {
   executor: executeLocalCommand,
   availabilityChecker: checkLocalBackendAvailability,
 });
 
-// Docker and SSH backends are already implemented in sandbox module
-// We'll bridge them here later
+// Docker and SSH backends are NOT registered here by design.
+// They live in ../sandbox/ module and require SandboxContext for:
+// - Container lifecycle management (docker.ts:ensureSandboxContainer)
+// - Security hardening (capDrop, no-new-privileges, pidsLimit)
+// - Workspace mount configuration
+// Bash-tools.exec.ts bridges the two modules based on sandbox availability.
 
 // ============================================================================
 // Backend Manager
