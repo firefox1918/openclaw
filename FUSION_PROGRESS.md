@@ -905,36 +905,49 @@ bash-tools.exec.ts execute()
 
 ---
 
-## Phase 4: 技能系统 [中优先级]
+## Phase 4: 技能系统 [已完成 - 技能查询工具]
 
-**状态**: ⏳ 待开始
-**预计工作量**: 2周
-**文件数量**: 6个文件
+**状态**: ✅ 已完成 (2026-04-20)
+**重要性**: ⭐⭐⭐ (技能查询能力)
 
-### 文件清单
+### 现状分析
 
-| 文件路径                         | 操作 | 状态 |
-| -------------------------------- | ---- | ---- |
-| `src/agents/skills/types.ts`     | 扩展 | ⏳   |
-| `src/agents/skills/parser.ts`    | 新建 | ⏳   |
-| `src/agents/skills/discovery.ts` | 新建 | ⏳   |
-| `src/agents/skills/registry.ts`  | 新建 | ⏳   |
-| `src/agents/tools/skill-tool.ts` | 新建 | ⏳   |
-| `src/agents/skills/workspace.ts` | 修改 | ⏳   |
+OpenClaw 技能系统已相当完整：
 
-### 关键设计要点
+- ✅ `types.ts` - 类型定义完整
+- ✅ `frontmatter.ts` - SKILL.md 解析（相当于 parser.ts）
+- ✅ `workspace.ts` - 技能发现和加载（相当于 discovery.ts + registry.ts）
+- ✅ `skill-manage-tool.ts` - 技能管理工具（Phase 8 已实现）
 
-- SKILL.md 格式: YAML frontmatter + Markdown 内容
-- 元数据约束: `name ≤64 chars`, `description ≤1024 chars`
-- 技能发现: 递归查找 SKILL.md 文件，解析 frontmatter
-- 存储位置: `~/.openclaw/skills/` 或配置外部目录
+### 缺失功能
 
-### 参考源码
+缺少 Hermes Agent 的查询类工具：
 
-- Hermes: `hermes-agent/tools/skills_tool.py` (skills_list, skill_view)
-- Hermes: `hermes-agent/skills/` (现有技能目录结构)
-- OpenClaw: `src/agents/skills/` (现有技能系统)
-- OpenClaw: `skills/` 目录
+- ❌ `skills_list` - 列出可用技能
+- ❌ `skill_view` - 查看单个技能详情
+
+### 实现方案
+
+**文件**: `src/agents/skills/skills-query-tool.ts`
+
+```typescript
+// skills_list: 列出可用技能
+// skill_view: 查看单个技能内容
+
+interface SkillsQueryInput {
+  action: "list" | "view";
+  name?: string; // for view action
+  verbose?: boolean; // 详细输出
+}
+```
+
+### 实现步骤
+
+1. 创建 skills-query-tool.ts - 查询工具实现
+2. 实现 skills_list 动作 - 列出所有可用技能
+3. 实现 skill_view 动作 - 查看单个技能详情
+4. 集成到 openclaw-tools.ts
+5. 编写测试用例
 
 ---
 
@@ -1797,10 +1810,10 @@ Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
 
 ### 其他Phase
 
-| Phase   | 功能          | 状态      | 进度 | 备注                      |
-| ------- | ------------- | --------- | ---- | ------------------------- |
-| Phase 4 | 技能系统扩展  | ⏳ 待开始 | 0%   | 非核心能力                |
-| Phase 5 | 任务/Fork系统 | ⏳ 待开始 | 0%   | 部分内容已纳入Phase 11-13 |
+| Phase       | 功能             | 状态          | 进度 | 备注                      |
+| ----------- | ---------------- | ------------- | ---- | ------------------------- |
+| **Phase 4** | **技能查询工具** | ✅ **已完成** | 100% | skills tool + 12 tests    |
+| Phase 5     | 任务/Fork系统    | ⏳ 待开始     | 0%   | 部分内容已纳入Phase 11-13 |
 
 ---
 
@@ -1881,11 +1894,16 @@ Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
   - 过期规则过滤: 正确过滤已过期规则
   - 规则上限: 最多500条规则，超出时自动裁剪
 
-### Phase 4 验证
+### Phase 4 验证 ✅ 已完成
 
-- 创建测试 SKILL.md 文件，验证解析正确
-- 测试技能发现和加载
-- 验证平台兼容性检查
+- ✅ TypeScript编译通过
+- ✅ Lint检查通过 (0 errors/warnings)
+- ✅ 测试全部通过 (12 tests passed)
+- ✅ 功能验证:
+  - list动作: 成功列出所有可用技能
+  - list verbose: 成功输出详细技能信息（包括 metadata, invocation, exposure）
+  - view动作: 成功读取单个技能内容
+  - 错误处理: 正确处理缺少name参数、技能不存在等错误场景
 
 ### Phase 5 验证
 
@@ -1944,10 +1962,10 @@ pnpm install && pnpm build
 ├── Phase 3: terminal模块 + bash-tools桥接 (11文件, 79 tests)
 ├── Phase 7: Prompt Cache (OpenClaw原生实现，无需移植)
 ├── Phase 8: 自主技能形成 (2文件, 20 tests)
-└── Phase 9: 规则持久化 (2文件, 23 tests) ✅ NEW
+├── Phase 9: 规则持久化 (2文件, 23 tests)
+└── Phase 4: 技能查询工具 (2文件, 12 tests) ✅ NEW
 
 待完成:
-├── Phase 4: 技能系统扩展 (6文件)
 └── Phase 5: 任务/Fork (9文件)
 ```
 
