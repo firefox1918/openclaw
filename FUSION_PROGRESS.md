@@ -1180,10 +1180,11 @@ async function proposeSkillLearning(
 
 ---
 
-## Phase 9: 规则持久化 [待实现]
+## Phase 9: 规则持久化 [已完成 - 用户偏好记忆]
 
-**状态**: ⏳ 待开始
-**预计工作量**: 3天
+**状态**: ✅ 已完成 (2026-04-20)
+**实际工作量**: 1小时
+**重要性**: ⭐⭐⭐⭐ (用户偏好记忆，提升体验)
 
 ### 现状
 
@@ -1208,6 +1209,16 @@ interface SavedPermissionRule {
 // - loadSavedRules(): 启动时加载
 // - mergeWithSessionRules(): 合并到运行时规则
 ```
+
+### 实现步骤
+
+1. 创建 persistence.ts - 持久化存储模块
+2. 定义 SavedPermissionRule 类型
+3. 实现 savePermissionRule() - 保存规则
+4. 实现 loadSavedRules() - 加载规则
+5. 实现 mergeWithSessionRules() - 合并到运行时
+6. 集成到 pipeline.ts - 启动时加载持久化规则
+7. 编写测试用例
 
 ---
 
@@ -1782,7 +1793,7 @@ Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
 | Phase       | 能力             | 状态          | 进度 | 备注                          |
 | ----------- | ---------------- | ------------- | ---- | ----------------------------- |
 | **Phase 8** | **自主技能形成** | ✅ **已完成** | 100% | skill_manage工具 + 20测试通过 |
-| **Phase 9** | **规则持久化**   | ⏳ **待实现** | 0%   | 用户偏好记忆                  |
+| **Phase 9** | **规则持久化**   | ✅ **已完成** | 100% | persistence.ts + 23 tests     |
 
 ### 其他Phase
 
@@ -1854,6 +1865,22 @@ Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
   - delete动作: 成功删除技能目录
   - duplicate检测: 正确拒绝重名技能创建
 
+### Phase 9 验证 ✅ 已完成
+
+- ✅ TypeScript编译通过
+- ✅ Lint检查通过 (0 errors/warnings)
+- ✅ 测试全部通过 (23 tests passed)
+- ✅ 功能验证:
+  - loadSavedRules: 正确加载持久化规则
+  - savePermissionRule: 成功保存规则到 ~/.openclaw/permissions.json
+  - removeSavedRule: 成功移除指定规则
+  - clearAllSavedRules: 清空所有规则
+  - cleanExpiredRules: 自动清理过期规则
+  - savedRuleToPermissionRule: 正确转换为运行时规则格式
+  - mergeSavedRulesWithExisting: 正确合并持久化规则与现有规则
+  - 过期规则过滤: 正确过滤已过期规则
+  - 规则上限: 最多500条规则，超出时自动裁剪
+
 ### Phase 4 验证
 
 - 创建测试 SKILL.md 文件，验证解析正确
@@ -1916,10 +1943,10 @@ pnpm install && pnpm build
 ├── Phase 1: memory模块 + 运行时集成 (8文件, 43 tests)
 ├── Phase 3: terminal模块 + bash-tools桥接 (11文件, 79 tests)
 ├── Phase 7: Prompt Cache (OpenClaw原生实现，无需移植)
-└── Phase 8: 自主技能形成 (2文件, 20 tests) ✅ NEW
+├── Phase 8: 自主技能形成 (2文件, 20 tests)
+└── Phase 9: 规则持久化 (2文件, 23 tests) ✅ NEW
 
 待完成:
-├── Phase 9: 规则持久化 (1文件) - 原始缺失能力#6
 ├── Phase 4: 技能系统扩展 (6文件)
 └── Phase 5: 任务/Fork (9文件)
 ```

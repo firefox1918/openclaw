@@ -95,3 +95,25 @@ export type {
   ToolChecker,
   ValidationResult,
 } from "./pipeline.js";
+
+// Persistence
+export {
+  cleanExpiredRules,
+  clearAllSavedRules,
+  getDefaultPermissionsFilePath,
+  getOpenClawDir,
+  getPersistenceStats,
+  loadSavedRules,
+  mergeSavedRulesWithExisting,
+  removeSavedRule,
+  savePermissionRule,
+  savedRuleToPermissionRule,
+  savedRulesToPermissionRules,
+} from "./persistence.js";
+
+export type {
+  LoadRulesOptions,
+  PersistedPermissions,
+  SaveRuleOptions,
+  SavedPermissionRule,
+} from "./persistence.js";
