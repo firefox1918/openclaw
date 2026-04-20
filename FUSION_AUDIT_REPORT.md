@@ -1,22 +1,78 @@
 # OpenClaw 融合实施方案 - 全面梳理报告
 
 > **分析时间**: 2026-04-16
-> **目标**: 验证已完成模块是否完全实现原始设计目标
+> **验证时间**: 2026-04-16
+> **核心理念**: 强化OpenClaw的自主持久工作能力和自主技能形成能力
+>
+> **Claude Code贡献**: 自主持久工作能力 - 12层Harness机制让Agent能长时间稳定完成复杂编程任务
+>
+> **Hermes Agent贡献**: 自主技能形成能力 - Agent从有效流程中学习并固化可复用技能
 
 ---
 
-## 1. 原始目标回顾
+## 0. 验证状态 (2026-04-16)
 
-**核心目标**: 将 Claude Code 的工程化设计思路和 Hermes Agent 的能力扩展，嫁接到 OpenClaw 项目中
+**测试验证完成**:
 
-**六大缺失能力** (Line 174-181 FUSION_PROGRESS.md):
+- Phase 1 记忆系统: 43 tests passed ✅
+- Phase 2 熔断器/递归保护: 35 tests passed ✅
+- Phase 3 危险命令检测: 41 tests passed ✅
+- Phase 6 权限系统: 28 tests passed ✅
 
-1. ❌ 无运行时权限决策（allow/ask/deny）
-2. ❌ 无checkPermissions方法
-3. ❌ 无危险命令检测
-4. ❌ 无权限上下文传递
-5. ❌ 无模式切换（plan模式）
-6. ❌ 无规则持久化
+**运行时集成验证**:
+
+- Phase 1: `run.ts:42,429` - initializeMemoryRuntime ✅
+- Phase 2: `run.ts:31,425,854-1130` - CircuitBreaker + runInCompactionContext ✅
+- Phase 3: `bash-tools.exec.ts:23,1511-1526` - checkDangerousCommandAndRequestApproval ✅
+- Phase 6: `pi-tools.ts:51,673-691`, `pi-tools.before-tool-call.ts:12,148,252` ✅
+
+---
+
+## 1. 融合目标
+
+**Claude Code的核心价值**（自主持久工作）：
+
+- 12层渐进式Harness机制
+- StreamingToolExecutor流式并发执行
+- Fork子Agent缓存优化
+- Coordinator模式（自主认领任务）
+- Background Tasks后台持久执行
+- 熔断器+递归保护（稳定运行）
+
+**Hermes Agent的核心价值**（学习能力）：
+
+- skill_manage工具（自主技能管理）
+- 学习触发检测（何时应该记录）
+- 工作流程提取（如何固化知识）
+- Agent越用越聪明，避免重复探索
+
+---
+
+## 2. 原始缺失能力（已覆盖部分）
+
+### Claude Code能力（自主持久工作）
+
+| #   | 能力                      | 实现方案                                | 代码证据                      | 完整度  |
+| --- | ------------------------- | --------------------------------------- | ----------------------------- | ------- |
+| 1   | **运行时权限决策**        | Phase 6.2: runPermissionCheck()         | before-tool-call.ts:148-189   | ✅ 100% |
+| 2   | **checkPermissions方法**  | Phase 6.1: checkRuntimePermission()     | permissions/index.ts          | ✅ 100% |
+| 3   | **危险命令检测**          | Phase 3: DANGEROUS_PATTERNS + 桥接      | terminal/dangerous.ts         | ✅ 100% |
+| 4   | **权限上下文传递**        | Phase 6.2: HookContext.permissionConfig | pi-tools.ts:689               | ✅ 100% |
+| 5   | **模式切换**              | Phase 6.1: PermissionMode类型 + 配置    | types.agent-defaults.ts       | ✅ 100% |
+| 6   | **极致缓存利用**          | OpenClaw原生已实现                      | prompt-cache-observability.ts | ✅ 100% |
+| 7   | **熔断器保护**            | Phase 2: CircuitBreaker                 | compaction/circuit-breaker.ts | ✅ 100% |
+| 8   | **递归保护**              | Phase 2: RecursionGuard                 | compaction/recursion-guard.ts | ✅ 100% |
+| 9   | **StreamingToolExecutor** | ⏳ 待实现                               | -                             | ❌ 0%   |
+| 10  | **Fork子Agent优化**       | ⏳ 待实现                               | -                             | ❌ 0%   |
+| 11  | **Coordinator模式**       | ⏳ 待实现                               | -                             | ❌ 0%   |
+| 12  | **Background Tasks**      | ⏳ 待实现                               | -                             | ❌ 0%   |
+
+### Hermes Agent能力（学习）
+
+| #   | 能力             | 实现方案                         | 代码证据  | 完整度 |
+| --- | ---------------- | -------------------------------- | --------- | ------ |
+| 13  | **自主技能形成** | Phase 8: skill_manage + 学习触发 | ⏳ 待实现 | ❌ 0%  |
+| 14  | **规则持久化**   | Phase 9: persistence.ts          | ⏳ 待实现 | ❌ 0%  |
 
 ---
 
@@ -119,67 +175,47 @@
 
 ---
 
-## 3. 原始缺失能力 vs 实现验证
+## 3. 总结
 
-| #   | 原始缺失能力               | 实现方案                                | 代码证据                             | 完整度  |
-| --- | -------------------------- | --------------------------------------- | ------------------------------------ | ------- |
-| 1   | **无运行时权限决策**       | Phase 6.2: runPermissionCheck()         | before-tool-call.ts:148-189          | ✅ 100% |
-| 2   | **无checkPermissions方法** | Phase 6.1: checkRuntimePermission()     | permissions/index.ts                 | ✅ 100% |
-| 3   | **无危险命令检测**         | Phase 3: DANGEROUS_PATTERNS + 桥接      | terminal/dangerous.ts                | ✅ 100% |
-| 4   | **无权限上下文传递**       | Phase 6.2: HookContext.permissionConfig | pi-tools.ts:689                      | ✅ 100% |
-| 5   | **无模式切换**             | Phase 6.1: PermissionMode类型 + 配置    | types.agent-defaults.ts, pi-tools.ts | ✅ 100% |
-| 6   | **无规则持久化**           | 未实现                                  | -                                    | ❌ 0%   |
+### Claude Code能力实现状态（自主持久工作）
 
----
-
-## 4. 待完善项
-
-### 4.1 规则持久化 (0%)
-
-**现状**: 用户审批决策未持久化，每次会话需重新审批。
-
-**需要**: 参考 Claude Code 的规则持久化机制，保存用户决策到配置文件。
-
-**代码路径**:
-
-- 新建 `src/agents/permissions/persistence.ts`
-- 实现 `savePermissionRule(rule)` 和 `loadSavedRules()`
-
----
-
-## 5. Phase 4/5 未实现
-
-| Phase | 功能          | 预计工作量 | 文件数 |
-| ----- | ------------- | ---------- | ------ |
-| 4     | 技能系统扩展  | 2周        | 6      |
-| 5     | 任务/Fork系统 | 3周        | 9      |
-
----
-
-## 6. 总结
-
-### 已实现核心能力 (5/6)
+**已实现 (8/12)**:
 
 - ✅ 运行时权限决策 (allow/ask/deny)
 - ✅ checkPermissions 管道
 - ✅ 危险命令检测 (30+模式)
 - ✅ 权限上下文传递
-- ✅ 模式切换 (类型定义 + 配置层集成完成)
+- ✅ 模式切换 (5种模式)
+- ✅ **极致缓存利用** (OpenClaw原生)
+- ✅ **熔断器保护** (Phase 2)
+- ✅ **递归保护** (Phase 2)
 
-### 待实现 (1/6)
+**待实现 (4/12)**:
 
-- ❌ 规则持久化
+- ❌ StreamingToolExecutor流式并发
+- ❌ Fork子Agent缓存优化
+- ❌ Coordinator模式（自主认领）
+- ❌ Background Tasks后台持久
+
+### Hermes Agent能力实现状态（学习）
+
+**已实现 (0/2)**:
+
+- ❌ 自主技能形成 (Phase 8)
+- ❌ 规则持久化 (Phase 9)
 
 ### 整体进度
 
-**核心模块**: 4/4 完成 (Phase 6.1+6.2, Phase 2, Phase 1, Phase 3)
-**运行时集成**: 4/4 完成
-**剩余Phase**: Phase 4, Phase 5 (非核心能力)
+**Claude Code自主持久**: 8/12 完成 (67%)
+**Hermes学习能力**: 0/2 完成 (0%)
 
 ---
 
-## 7. 建议下一步
+## 4. 建议下一步
 
-1. **实现规则持久化** - 保存用户审批决策
-2. **Phase 4 技能系统** - 如需扩展技能发现
-3. **Phase 5 任务系统** - 如需多Agent协作
+### 优先级排序
+
+1. **实现自主技能形成 (Phase 8)** - Hermes Agent学习能力，让Agent"进化"
+2. **增强自主持久工作** - 补充StreamingToolExecutor、Fork、Coordinator、Background Tasks
+3. **实现规则持久化 (Phase 9)** - 记忆用户偏好
+4. **Phase 4/5** - 技能扩展、多Agent协作（非核心）

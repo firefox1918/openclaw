@@ -11,6 +11,7 @@ import {
   isUpdatePlanToolEnabledForOpenClawTools,
 } from "./openclaw-tools.registration.js";
 import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
+import { createSkillManageTool } from "./skills/skill-manage-tool.js";
 import type { SpawnedToolContext } from "./spawned-context.js";
 import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
@@ -299,6 +300,9 @@ export function createOpenClawTools(
       agentSessionKey: options?.agentSessionKey,
       config: resolvedConfig,
       sandboxed: options?.sandboxed,
+    }),
+    createSkillManageTool({
+      workspaceDir,
     }),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
   ];

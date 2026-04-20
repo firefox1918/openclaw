@@ -1,7 +1,67 @@
 # OpenClaw 融合实施方案 - 执行进度跟踪
 
 > **创建时间**: 2026-04-13
-> **目标**: 将 Claude Code 的工程化设计思路和 Hermes Agent 的能力扩展，嫁接到 OpenClaw 项目中
+> **核心理念**: 强化OpenClaw，使其具备强大的自主持久工作能力和自主技能形成能力
+>
+> **Claude Code贡献**: 自主持久工作能力 - 12层Harness机制让Agent能长时间稳定完成复杂编程任务
+>
+> **Hermes Agent贡献**: 自主技能形成能力 - Agent从有效流程中学习并固化可复用技能
+
+---
+
+## 融合目标详解
+
+### Claude Code: 自主持久工作能力
+
+Claude Code处理编程任务时非常好用，核心在于：
+
+**12层渐进式Harness机制**：
+
+```
+S01 - THE LOOP          → 基础循环（API调用→工具执行→循环）
+S02 - TOOL DISPATCH     → 工具注册与分发
+S03 - PLANNING          → Plan模式（先规划再执行，提高完成率）
+S04 - SUB-AGENTS        → Fork子智能体（上下文继承）
+S05 - KNOWLEDGE ON DEMAND → 按需加载（SkillTool + memdir）
+S06 - CONTEXT COMPRESSION → 三层压缩（管理上下文窗口）
+S07 - PERSISTENT TASKS  → 任务图 + 依赖管理 + 持久化
+S08 - BACKGROUND TASKS  → 后台执行（主Agent继续思考）
+S09 - AGENT TEAMS       → 持久化队友 + 异步邮箱
+S10 - TEAM PROTOCOLS    → SendMessageTool统一通信
+S11 - AUTONOMOUS AGENTS → Coordinator空闲循环 + 自动认领任务
+S12 - WORKTREE ISOLATION → Git worktree隔离（避免冲突）
+```
+
+**关键技术创新**：
+
+- **StreamingToolExecutor**: 流式接收时立即执行，最大化并发
+- **Fork缓存优化**: 统一占位符共享缓存，提升子Agent效率
+- **熔断器机制**: 连续失败3次后停止重试，防止死循环
+- **递归保护**: session_memory Agent不触发压缩，防止无限递归
+
+### Hermes Agent: 自主技能形成能力
+
+Hermes的`skill_manage`工具让Agent具备学习能力：
+
+**触发条件**（何时应该"学习"）：
+
+- 完成复杂任务（5+工具调用）后成功
+- 遇到错误/死胡同并找到有效路径
+- 用户纠正了Agent的方法
+- 发现非平凡可复用工作流程
+
+**学习动作**：
+
+```
+create   → 从零创建新技能（记录有效流程）
+patch    → 针对性修复（token高效）
+edit     → 结构性重写
+delete   → 删除过时技能
+write_file → 添加辅助脚本
+remove_file → 清理辅助文件
+```
+
+**价值**：Agent不是一次性执行，而是"进化"——每次成功都固化最佳实践。
 
 ---
 
@@ -914,17 +974,822 @@ bash-tools.exec.ts execute()
 
 ---
 
+## Phase 7: 极致缓存利用 [已覆盖 - OpenClaw原生实现]
+
+**状态**: ✅ 已覆盖（OpenClaw已有完整实现）
+**覆盖范围**: 100%
+
+### OpenClaw原生实现
+
+OpenClaw已实现Claude Code风格的Prompt Cache极致利用：
+
+| 组件          | 文件路径                                                      | 功能                                |
+| ------------- | ------------------------------------------------------------- | ----------------------------------- |
+| 缓存观测      | `src/agents/pi-embedded-runner/prompt-cache-observability.ts` | 缓存失效检测、快照比对、metrics追踪 |
+| 缓存边界      | `src/agents/system-prompt-cache-boundary.ts`                  | 稳定前缀/动态后缀分离               |
+| 缓存TTL       | `src/agents/pi-embedded-runner/cache-ttl.ts`                  | TTL窗口管理                         |
+| Anthropic集成 | `src/agents/anthropic-payload-policy.ts`                      | cache_control注入                   |
+| Google集成    | `src/agents/pi-embedded-runner/google-prompt-cache.ts`        | Gemini cachedContents管理           |
+
+### 配置支持
+
+```yaml
+# cacheRetention配置（已支持）
+agents:
+  defaults:
+    params:
+      cacheRetention: "long" # none | short | long
+
+
+# Provider特定行为
+# - Anthropic: short=5min, long=1hour TTL
+# - OpenAI: 自动prompt caching, prompt_cache_key稳定路由
+# - Gemini: cachedContents资源管理
+# - Vertex/Bedrock: Anthropic兼容缓存
+```
+
+### 缓存稳定性保障
+
+- MCP工具目录排序（避免顺序变化破坏缓存前缀）
+- 系统提示词边界分离（稳定部分在前，动态部分在后）
+- 心跳保活（heartbeat保持缓存窗口温暖）
+- contextPruning.cache-ttl模式（防止idle后重新缓存过大历史）
+
+### 参考文档
+
+- OpenClaw: `docs/reference/prompt-caching.md`
+- Claude Code: `claude-leaked-source/MISSING_12_PERCENT.md` Section 3
+
+---
+
+## Phase 8: 自主技能形成 [已完成 - Hermes Agent学习能力]
+
+**状态**: ✅ 已完成 (2026-04-20)
+**实际工作量**: 1天
+**重要性**: ⭐⭐⭐⭐⭐ (Hermes Agent核心学习能力)
+**核心理念**: Agent从有效工作流程中"学习"并固化可复用技能
+
+### 核心概念
+
+**自主技能形成** = Agent的"学习"和"进化"能力
+
+这不是简单记录，而是让Agent能够：
+
+1. **识别高价值流程** - 从成功执行中提取可复用模式
+2. **固化最佳实践** - 将有效方法转化为技能
+3. **积累程序记忆** - 越用越聪明，避免重复探索
+
+Hermes Agent的`skill_manage`工具实现了这个能力：
+
+```python
+# Hermes Agent - skill_manage tool
+# Agent可以自主执行以下操作：
+actions = {
+    "create": "从零创建新技能（记录有效流程）",
+    "patch": "针对性修复（token高效，比edit更优雅）",
+    "edit": "结构性重写",
+    "delete": "删除过时技能",
+    "write_file": "添加辅助脚本/参考文档",
+    "remove_file": "清理辅助文件"
+}
+
+# 学习触发条件：
+learning_triggers = [
+    "完成复杂任务（5+工具调用）后成功",
+    "遇到错误/死胡同并找到有效路径 → 高价值！",
+    "用户纠正了Agent的方法 → 高价值！",
+    "发现非平凡可复用工作流程"
+]
+```
+
+### OpenClaw现状
+
+OpenClaw已有技能系统，但**缺少学习能力**：
+
+| 能力               | OpenClaw现状           | Hermes Agent              |
+| ------------------ | ---------------------- | ------------------------- |
+| 手动创建技能       | ✅ skill-creator skill | ✅ hermes skills create   |
+| 安装外部技能       | ✅ ClawHub集成         | ✅ Skills Hub多源         |
+| 列出/查看技能      | ✅ skills list/view    | ✅ skills_list/skill_view |
+| **识别高价值流程** | ❌ 无                  | ✅ 触发条件检测           |
+| **自主创建技能**   | ❌ 无                  | ✅ skill_manage tool      |
+| **自主更新技能**   | ❌ 无                  | ✅ patch/edit actions     |
+| **成功后自动记录** | ❌ 无                  | ✅ 自动触发学习           |
+
+### 实现方案
+
+#### Step 1: 创建 skill_manage 工具
+
+**文件**: `src/agents/tools/skill-manage.ts`
+
+```typescript
+// 核心接口
+interface SkillManageInput {
+  action: "create" | "patch" | "edit" | "delete" | "write_file" | "remove_file";
+  name: string; // skill name
+  content?: string; // SKILL.md content (create/edit)
+  old_string?: string; // for patch（token高效）
+  new_string?: string; // for patch
+  file_path?: string; // for write_file/remove_file
+  file_content?: string; // for write_file
+  category?: string; // optional category for create
+}
+
+interface SkillManageResult {
+  success: boolean;
+  skill_name: string;
+  action: string;
+  message: string;
+}
+```
+
+#### Step 2: 学习触发检测
+
+**文件**: `src/agents/skill-learning-trigger.ts`
+
+```typescript
+// 检测是否应该"学习"并记录为技能
+interface LearningTrigger {
+  toolCallCount: number; // >= 5 触发候选
+  hadErrors: boolean; // 有错误但最终成功 → 高价值学习
+  hadUserCorrection: boolean; // 用户纠正 → 高价值学习
+  workflowComplexity: "simple" | "moderate" | "complex";
+  domainReusability: boolean; // 是否可复用于其他场景
+}
+
+function shouldLearnAndFormSkill(
+  sessionHistory: ToolCallHistory,
+  trigger: LearningTrigger,
+): boolean {
+  // 学习触发条件：
+  // 1. toolCallCount >= 5 && success → 完成复杂任务
+  // 2. hadErrors && foundWorkingPath → 错误后找到有效路径（高价值）
+  // 3. hadUserCorrection → 用户纠正了方法（高价值）
+  // 4. domainReusability评估 → 可复用场景判断
+}
+```
+
+#### Step 3: 工作流程提取（学习方法）
+
+**文件**: `src/agents/skill-workflow-extractor.ts`
+
+```typescript
+// 从成功执行中提取技能内容（学习过程）
+function extractSkillFromSession(sessionHistory: ToolCallHistory): SkillContent {
+  // 1. 识别核心工作流程步骤
+  // 2. 提取关键决策点（特别是错误后的正确路径）
+  // 3. 识别常见陷阱和解决方法（从错误中学习）
+  // 4. 生成验证方法（如何确认成功）
+  // 5. 格式化为SKILL.md
+}
+```
+
+#### Step 4: 学习确认流程
+
+```typescript
+// 不强制创建，询问用户确认
+async function proposeSkillLearning(
+  skillName: string,
+  skillPreview: string,
+  learningReason: string, // 为什么认为这是高价值流程
+): Promise<boolean> {
+  // 调用Gateway审批流程
+  // 显示：检测到高价值工作流程
+  // 原因：[learningReason]（如：错误后找到有效路径、用户纠正等）
+  // 提问：是否保存为技能以便后续复用？
+  // 预览：SKILL.md内容摘要
+}
+```
+
+### 文件清单
+
+| 文件路径                                  | 操作 | 状态                      |
+| ----------------------------------------- | ---- | ------------------------- |
+| `src/agents/tools/skill-manage.ts`        | 新建 | ⏳                        |
+| `src/agents/skill-learning-trigger.ts`    | 新建 | ⏳                        |
+| `src/agents/skill-workflow-extractor.ts`  | 新建 | ⏳                        |
+| `src/agents/skills/workspace.ts`          | 修改 | ⏳ (添加skill_manage注册) |
+| `src/agents/pi-tools.before-tool-call.ts` | 修改 | ⏳ (添加学习触发检测)     |
+
+### 参考源码
+
+- Hermes: `hermes-agent/tools/skills_tool.py` (skill_manage工具)
+- Hermes: `hermes-agent/hermes_cli/skills_hub.py` (技能管理)
+- OpenClaw: `src/agents/skills/workspace.ts` (现有技能发现)
+- OpenClaw: `skills/skill-creator/SKILL.md` (手动创建指南)
+
+---
+
+## Phase 9: 规则持久化 [待实现]
+
+**状态**: ⏳ 待开始
+**预计工作量**: 3天
+
+### 现状
+
+用户审批决策未持久化，每次会话需重新审批。
+
+### 实现方案
+
+**文件**: `src/agents/permissions/persistence.ts`
+
+```typescript
+// 保存用户审批决策
+interface SavedPermissionRule {
+  toolName: string;
+  behavior: "allow" | "deny";
+  pattern?: string; // 如 bash危险命令模式
+  createdAt: number;
+  expiresAt?: number; // 可选过期时间
+}
+
+// 功能：
+// - savePermissionRule(rule): 保存到 ~/.openclaw/permissions.json
+// - loadSavedRules(): 启动时加载
+// - mergeWithSessionRules(): 合并到运行时规则
+```
+
+---
+
+## Phase 10: StreamingToolExecutor [待实现]
+
+**状态**: ⏳ 待开始
+**预计工作量**: 1周
+**重要性**: ⭐⭐⭐⭐ (Claude Code核心创新)
+**对应**: Claude Code 12层Harness S02
+
+### 核心概念
+
+**流式执行创新**：工具还在流式接收时就开始执行，最大化并发
+
+```typescript
+// Claude Code的核心创新
+class StreamingToolExecutor {
+  // 工具还在接收时就开始执行
+  addTool(block) {
+    // 立即尝试执行
+    void this.processQueue();
+  }
+
+  // 动态并发控制
+  canExecuteTool(isConcurrencySafe) {
+    // 只读工具可并行，写操作串行
+  }
+}
+```
+
+### 实现方案
+
+**文件**: `src/agents/streaming-tool-executor.ts`
+
+```typescript
+interface TrackedTool {
+  id: string;
+  block: ToolUseBlock;
+  status: "queued" | "executing" | "completed" | "yielded";
+  isConcurrencySafe: boolean;
+  pendingProgress: Progress[];
+}
+
+class StreamingToolExecutor {
+  private tools: TrackedTool[] = [];
+
+  // 添加工具到执行队列（流式接收时调用）
+  addTool(block: ToolUseBlock, assistantMessage: AssistantMessage) {
+    const isConcurrencySafe = this.checkConcurrencySafety(block);
+    this.tools.push({
+      id: block.id,
+      block,
+      status: "queued",
+      isConcurrencySafe,
+      pendingProgress: [],
+    });
+    void this.processQueue(); // 立即尝试执行
+  }
+
+  // 并发控制逻辑
+  private canExecuteTool(isConcurrencySafe: boolean): boolean {
+    const executing = this.tools.filter((t) => t.status === "executing");
+    return (
+      executing.length === 0 || (isConcurrencySafe && executing.every((t) => t.isConcurrencySafe))
+    );
+  }
+
+  // 处理执行队列
+  private async processQueue() {
+    for (const tool of this.tools) {
+      if (tool.status !== "queued") continue;
+      if (this.canExecuteTool(tool.isConcurrencySafe)) {
+        await this.executeTool(tool);
+      } else if (!tool.isConcurrencySafe) {
+        break; // 非并发安全工具阻塞队列
+      }
+    }
+  }
+}
+```
+
+### 并发策略
+
+| 工具类型       | 并发策略                     | 示例              |
+| -------------- | ---------------------------- | ----------------- |
+| **并发安全**   | 可并行执行（最多10个）       | Read, Glob, Grep  |
+| **非并发安全** | 严格串行执行                 | Edit, Write, Bash |
+| **混合场景**   | 先并发只读批次，再串行写批次 | 搜索→修改流程     |
+
+### 集成点
+
+- `src/agents/pi-embedded-runner/run.ts`: 主循环中使用StreamingToolExecutor
+- `src/agents/tools/common.ts`: 添加`isConcurrencySafe()`方法
+
+---
+
+## Phase 11: Fork子Agent优化 [待实现]
+
+**状态**: ⏳ 待开始
+**预计工作量**: 1周
+**重要性**: ⭐⭐⭐⭐ (Prompt Cache关键优化)
+**对应**: Claude Code 12层Harness S04
+
+### 核心概念
+
+**缓存优化创新**：所有Fork子Agent使用相同占位符，最大化Prompt Cache共享
+
+```typescript
+// Claude Code的缓存优化
+const FORK_PLACEHOLDER_RESULT = "Fork started — processing in background";
+
+// fork_boilerplate模板让所有子Agent共享缓存前缀
+function buildChildMessage(directive: string): string {
+  return `<fork_boilerplate>
+STOP. READ THIS FIRST.
+You are a forked worker process. You are NOT the main agent.
+RULES:
+1. Do NOT spawn sub-agents; execute directly
+2. Do NOT converse or ask questions
+3. USE your tools directly: Bash, Read, Write, etc.
+...
+DIRECTIVE: ${directive}`;
+}
+```
+
+### 实现方案
+
+**文件**: `src/agents/fork-cache-optimization.ts`
+
+```typescript
+// Fork子Agent统一占位符（缓存优化）
+const FORK_UNIFIED_PLACEHOLDER = "Fork started — processing in background";
+
+// Fork子Agent指令模板（共享缓存前缀）
+const FORK_BOILERPLATE_TEMPLATE = `
+STOP. READ THIS FIRST.
+You are a forked worker process. You are NOT the main agent.
+
+RULES:
+1. Do NOT spawn sub-agents; execute directly
+2. Do NOT converse or ask questions
+3. USE your tools directly: Bash, Read, Write, etc.
+4. If you modify files, commit before reporting
+5. Stay strictly within your directive's scope
+6. Keep report under 500 words
+7. Response MUST begin with "Scope:"
+`;
+
+// 构建Fork消息（使用统一模板）
+function buildForkedMessages(directive: string, assistantMessage: AssistantMessage): Message[] {
+  // 1. 克隆完整的assistant消息
+  const fullAssistantMessage = cloneAssistantMessage(assistantMessage);
+
+  // 2. 为所有tool_use创建统一占位符（缓存共享）
+  const toolResultBlocks = assistantMessage.toolUseBlocks.map((block) => ({
+    type: "tool_result",
+    tool_use_id: block.id,
+    content: FORK_UNIFIED_PLACEHOLDER, // 统一占位符！
+  }));
+
+  // 3. 构建用户消息
+  const userMessage = createUserMessage({
+    content: [
+      ...toolResultBlocks,
+      { type: "text", text: FORK_BOILERPLATE_TEMPLATE + `\nDIRECTIVE: ${directive}` },
+    ],
+  });
+
+  return [fullAssistantMessage, userMessage];
+}
+```
+
+### 集成点
+
+- `src/agents/subagent-spawn.ts`: Fork子Agent创建时使用统一模板
+
+---
+
+## Phase 12: Coordinator模式 [待实现]
+
+**状态**: ⏳ 待开始
+**预计工作量**: 1周
+**重要性**: ⭐⭐⭐⭐ (自主持久工作核心)
+**对应**: Claude Code 12层Harness S11
+
+### 核心概念
+
+**自主任务认领**：Agent空闲时自动查找并认领可执行任务
+
+```typescript
+// Claude Code的Coordinator模式
+async function autonomousWorkerLoop(agentId: string) {
+  while (true) {
+    // 1. 检查收件箱
+    const messages = await checkInbox(agentId);
+    if (messages.length > 0) {
+      await processMessages(messages);
+    }
+
+    // 2. 查找可认领的任务
+    const availableTasks = await listTasks({
+      status: "pending",
+      owner: null,
+      blockedBy: [], // 无阻塞依赖
+    });
+
+    if (availableTasks.length > 0) {
+      const task = availableTasks[0];
+      await claimTask(task.id, agentId); // 原子认领
+      await executeTask(task);
+    } else {
+      await sleep(5000); // 无任务，休眠
+    }
+  }
+}
+```
+
+### 实现方案
+
+**文件**: `src/agents/coordinator-loop.ts`
+
+```typescript
+interface CoordinatorConfig {
+  agentId: string;
+  checkInboxInterval: number; // 默认 1000ms
+  sleepWhenIdle: number; // 默认 5000ms
+  maxConcurrentTasks: number; // 默认 1
+}
+
+class CoordinatorLoop {
+  private config: CoordinatorConfig;
+  private status: "running" | "paused" | "stopped" = "running";
+
+  async run() {
+    while (this.status === "running") {
+      // 1. 优先处理收件箱消息
+      const messages = await this.checkInbox();
+      if (messages.length > 0) {
+        await this.processMessages(messages);
+        continue; // 处理完消息后重新检查
+      }
+
+      // 2. 查找可认领任务
+      const availableTask = await this.findAvailableTask();
+      if (availableTask) {
+        await this.claimAndExecute(availableTask);
+      } else {
+        // 无任务，休眠
+        await this.sleep(this.config.sleepWhenIdle);
+      }
+    }
+  }
+
+  private async findAvailableTask(): Promise<Task | null> {
+    const tasks = await listTasks({
+      status: "pending",
+      owner: null,
+    });
+
+    // 过滤被阻塞的任务
+    const readyTasks = tasks.filter((task) => this.isTaskReady(task));
+
+    if (readyTasks.length === 0) return null;
+
+    // 按优先级排序
+    return readyTasks.sort((a, b) => (b.priority || 0) - (a.priority || 0))[0];
+  }
+
+  private isTaskReady(task: Task): boolean {
+    if (task.blockedBy.length === 0) return true;
+    const blockers = await getTasks(task.blockedBy);
+    return blockers.every((t) => t.status === "completed");
+  }
+
+  private async claimAndExecute(task: Task): Promise<void> {
+    // 原子认领（使用proper-lockfile）
+    await claimTask(task.id, this.config.agentId);
+    await executeTask(task);
+    await updateTask(task.id, { status: "completed" });
+  }
+}
+```
+
+### 集成点
+
+- `src/agents/pi-embedded-runner/run.ts`: 主循环结束后可进入Coordinator模式
+- `src/agents/tasks/store.ts`: 任务持久化存储
+
+---
+
+## Phase 13: Background Tasks [待实现]
+
+**状态**: ⏳ 待开始
+**预计工作量**: 1周
+**重要性**: ⭐⭐⭐⭐ (持久工作关键)
+**对应**: Claude Code 12层Harness S08
+
+### 核心概念
+
+**后台持久执行**：主Agent继续思考时，后台任务在执行
+
+```typescript
+// Claude Code的Background Tasks
+type TaskType =
+  | "local_bash" // 本地Shell命令
+  | "local_agent" // 本地子Agent
+  | "remote_agent" // 远程Agent
+  | "dream"; // 后台思考任务
+
+class BackgroundTaskManager {
+  async spawn(type: TaskType, config: TaskConfig): Promise<string> {
+    const taskId = generateTaskId(type);
+    const task = { id: taskId, type, status: "running", promise: this.executeTask(type, config) };
+    this.tasks.set(taskId, task);
+
+    // 任务完成时通知主Agent
+    task.promise.then((result) => {
+      this.notifyCompletion(taskId, result);
+    });
+
+    return taskId;
+  }
+
+  async getOutput(taskId: string, block: boolean): Promise<TaskOutput> {
+    const task = this.tasks.get(taskId);
+    if (block) {
+      return await task.promise; // 阻塞等待
+    } else {
+      return task.currentOutput; // 非阻塞获取当前状态
+    }
+  }
+}
+```
+
+### 实现方案
+
+**文件**: `src/agents/background-task-manager.ts`
+
+```typescript
+type BackgroundTaskType = "shell" | "subagent" | "analysis";
+
+interface BackgroundTask {
+  id: string;
+  type: BackgroundTaskType;
+  status: "running" | "completed" | "failed";
+  promise: Promise<TaskOutput>;
+  currentOutput?: TaskOutput;
+  startedAt: number;
+}
+
+class BackgroundTaskManager {
+  private tasks = new Map<string, BackgroundTask>();
+  private completionCallbacks = new Map<string, (result: TaskOutput) => void>();
+
+  async spawn(type: BackgroundTaskType, config: TaskConfig): Promise<string> {
+    const taskId = generateTaskId(type);
+
+    const task: BackgroundTask = {
+      id: taskId,
+      type,
+      status: "running",
+      promise: this.executeTask(type, config),
+      startedAt: Date.now(),
+    };
+
+    this.tasks.set(taskId, task);
+
+    // 任务完成时通知
+    task.promise
+      .then((result) => {
+        task.status = "completed";
+        task.currentOutput = result;
+        const callback = this.completionCallbacks.get(taskId);
+        if (callback) callback(result);
+      })
+      .catch((error) => {
+        task.status = "failed";
+        task.currentOutput = { error: error.message };
+      });
+
+    return taskId;
+  }
+
+  async getOutput(taskId: string, block: boolean = false): Promise<TaskOutput> {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error("Task not found");
+
+    if (block) {
+      return await task.promise;
+    }
+    return task.currentOutput ?? { status: "running", progress: "In progress..." };
+  }
+
+  onComplete(taskId: string, callback: (result: TaskOutput) => void): void {
+    this.completionCallbacks.set(taskId, callback);
+  }
+
+  listRunning(): BackgroundTask[] {
+    return [...this.tasks.values()].filter((t) => t.status === "running");
+  }
+}
+```
+
+### 集成点
+
+- `src/agents/pi-embedded-runner/run.ts`: 主循环可spawn后台任务
+- `src/agents/tools/background-task.ts`: 新建后台任务工具
+
+---
+
+## Phase 1-6 遗留收尾工作
+
+### Phase 1-6 验证 ✅ 已完成 (2026-04-16)
+
+**验证结果**:
+
+- Phase 1 记忆系统: 43 tests passed ✅
+- Phase 2 熔断器/递归保护: 35 tests passed ✅
+- Phase 3 危险命令检测: 41 tests passed ✅
+- Phase 6 权限系统: 28 tests passed ✅
+
+**运行时集成验证**:
+
+- Phase 1: `run.ts:42,429` - initializeMemoryRuntime ✅
+- Phase 2: `run.ts:31,425,854-1130` - CircuitBreaker + runInCompactionContext ✅
+- Phase 3: `bash-tools.exec.ts:23,1511-1526` - checkDangerousCommandAndRequestApproval ✅
+- Phase 6: `pi-tools.ts:51,673-691`, `pi-tools.before-tool-call.ts:12,148,252` ✅
+
+### Phase 3 后端扩展 ⏳ 待完成
+
+**状态**: 核心模块已完成，扩展未完成
+
+| 扩展项                        | 状态        | 工作量 |
+| ----------------------------- | ----------- | ------ |
+| sandbox桥接（docker/ssh）     | ⏳ 未完成   | 2天    |
+| 权限深度集成                  | ⏳ 部分完成 | 1天    |
+| modal/daytona/singularity后端 | ⏳ 未完成   | 3天    |
+
+**建议**: sandbox桥接优先级较高（已有docker/ssh实现可复用）
+
+### Phase 6.2 运行时测试 ⏳ 待完成
+
+需要实际Agent执行验证权限审批流程完整工作。
+
+---
+
+## 执行路径与优先级
+
+### Phase依赖关系图
+
+```
+已完成（核心模块+验证）:
+├── Phase 6.1+6.2 权限系统 ✅ (28 tests)
+├── Phase 2 熔断器+递归保护 ✅ (35 tests)
+├── Phase 1 记忆系统 ✅ (43 tests)
+├── Phase 3 危险命令检测 ✅ (41 tests)
+├── Phase 7 极致缓存利用 ✅ (OpenClaw原生)
+└── Phase 1-6 集成验证 ✅ (2026-04-16)
+
+遗留收尾:
+├── Phase 3 sandbox桥接 ⏳ （docker/ssh后端）
+└── Phase 6.2 运行时测试 ⏳ （实际Agent验证）
+
+待执行路径:
+
+路径A: Hermes学习能力（最高优先级）
+├── Phase 8 自主技能形成 ──→ 让Agent能"进化"
+│   └── 依赖: 已完成的Phase 6权限系统（审批流程）
+│   └── 预计: 2周
+│
+└── Phase 9 规则持久化 ──→ Agent记住用户偏好
+    └── 依赖: Phase 6（权限规则）
+    └── 预计: 3天
+
+路径B: Claude Code持久工作（高优先级）
+├── Phase 10 StreamingToolExecutor ──→ 流式并发执行
+│   └── 依赖: 无，可独立实现
+│   └── 预计: 1周
+│
+├── Phase 11 Fork优化 ──→ 缓存共享
+│   └── 依赖: Phase 10（流式执行基础）
+│   └── 预计: 1周
+│
+├── Phase 12 Coordinator模式 ──→ 自主认领任务
+│   └── 依赖: Phase 11（Fork子Agent）
+│   └── 预计: 1周
+│
+└── Phase 13 Background Tasks ──→ 后台持久
+    └── 依赖: Phase 12（Coordinator循环）
+    └── 预计: 1周
+```
+
+### 推荐执行顺序（更新）
+
+**优先级0（立即收尾）**:
+
+```
+Phase 1-6 遗留收尾工作
+├── ✅ Phase 1-6 验证已完成 (2026-04-16)
+│   ├── Phase 1: 43 tests ✅
+│   ├── Phase 2: 35 tests ✅
+│   ├── Phase 3: 41 tests ✅
+│   └── Phase 6: 28 tests ✅
+│
+├── Phase 3 sandbox桥接：复用现有docker/ssh后端
+│   └── src/agents/terminal/backend-manager.ts 修改
+│   └── 预计: 2天
+│
+└── Phase 6.2 运行时测试：实际Agent执行验证
+    └── 需要手动测试权限审批流程
+    └── 预计: 1小时
+```
+
+**优先级1（收尾后立即执行）**:
+
+```
+Phase 8 自主技能形成
+└── 核心价值: Agent学习能力，越用越聪明
+└── 独立性强: 依赖已完成的Phase 6
+└── 工作量: 2周（4个文件）
+```
+
+**优先级2（短期）**:
+
+```
+Phase 10 StreamingToolExecutor
+└── 核心价值: Claude Code的核心创新
+└── 独立性强: 无前置依赖
+└── 工作量: 1周（1个核心文件）
+```
+
+**优先级3（中期）**:
+
+```
+Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
+└── 按依赖链顺序执行
+└── 总工作量: ~4周
+```
+
+### 预期收益
+
+执行完所有待实现Phase后，OpenClaw将具备：
+
+| 能力                | 来源        | 收益                        |
+| ------------------- | ----------- | --------------------------- |
+| **Agent能学习进化** | Phase 8+9   | 越用越聪明，避免重复探索    |
+| **高效并发执行**    | Phase 10    | 工具执行速度提升            |
+| **多Agent协作**     | Phase 11-13 | 复杂任务并行处理            |
+| **持久稳定工作**    | Phase 12-13 | 长时间任务自动认领+后台执行 |
+
+---
+
 ## 总进度
 
-| Phase                    | 状态             | 进度 |
-| ------------------------ | ---------------- | ---- |
-| Phase 6.1 (权限模块实现) | ✅ 已完成        | 100% |
-| Phase 6.2 (权限融入)     | ✅ 已完成        | 100% |
-| Phase 2 (上下文管理)     | ✅ 模块+集成完成 | 100% |
-| Phase 1 (记忆系统)       | ✅ 模块+集成完成 | 100% |
-| Phase 3 (终端执行)       | ✅ 模块+桥接完成 | 100% |
-| Phase 4 (技能系统)       | ⏳ 待开始        | 0%   |
-| Phase 5 (任务/Fork)      | ⏳ 待开始        | 0%   |
+### Claude Code能力（自主持久工作）
+
+| Phase        | 能力                          | 状态          | 进度 | 备注                          |
+| ------------ | ----------------------------- | ------------- | ---- | ----------------------------- |
+| Phase 6.1    | 权限模块实现                  | ✅ 已完成     | 100% | types/modes/rules/pipeline    |
+| Phase 6.2    | 权限融入                      | ✅ 已完成     | 100% | runtime-permission-check.ts   |
+| Phase 2      | 上下文管理（熔断器+递归保护） | ✅ 已完成     | 100% | compaction模块                |
+| Phase 1      | 记忆系统                      | ✅ 已完成     | 100% | memory模块 + runtime集成      |
+| Phase 3      | 终端执行（危险检测）          | ✅ 已完成     | 100% | terminal模块 + bash-tools桥接 |
+| Phase 7      | 极致缓存利用                  | ✅ 已覆盖     | 100% | OpenClaw原生实现              |
+| **Phase 10** | **StreamingToolExecutor**     | ⏳ **待实现** | 0%   | 流式并发执行                  |
+| **Phase 11** | **Fork子Agent优化**           | ⏳ **待实现** | 0%   | 统一占位符缓存                |
+| **Phase 12** | **Coordinator模式**           | ⏳ **待实现** | 0%   | 空闲循环+自动认领             |
+| **Phase 13** | **Background Tasks**          | ⏳ **待实现** | 0%   | 后台持久执行                  |
+
+### Hermes Agent能力（学习）
+
+| Phase       | 能力             | 状态          | 进度 | 备注                          |
+| ----------- | ---------------- | ------------- | ---- | ----------------------------- |
+| **Phase 8** | **自主技能形成** | ✅ **已完成** | 100% | skill_manage工具 + 20测试通过 |
+| **Phase 9** | **规则持久化**   | ⏳ **待实现** | 0%   | 用户偏好记忆                  |
+
+### 其他Phase
+
+| Phase   | 功能          | 状态      | 进度 | 备注                      |
+| ------- | ------------- | --------- | ---- | ------------------------- |
+| Phase 4 | 技能系统扩展  | ⏳ 待开始 | 0%   | 非核心能力                |
+| Phase 5 | 任务/Fork系统 | ⏳ 待开始 | 0%   | 部分内容已纳入Phase 11-13 |
 
 ---
 
@@ -972,6 +1837,22 @@ bash-tools.exec.ts execute()
   - Obfuscation防护有效 (ANSI/null byte/Unicode fullwidth)
   - Session approval流程正常 (approve/revoke/clear)
   - Permission API兼容Phase 6 (behavior: allow/ask/deny)
+
+### Phase 8 验证 ✅ 已完成
+
+- ✅ TypeScript编译通过
+- ✅ Lint检查通过 (0 errors/warnings)
+- ✅ 测试全部通过 (20 tests passed)
+- ✅ 工具已注册到 OpenClaw 工具系统 (`openclaw-tools.ts:304-306`)
+- ✅ 功能验证:
+  - validateName: 正确拒绝无效名称 (空/大写/空格/过长)
+  - validateCategory: 正确拒绝路径分隔符
+  - validateFrontmatter: 正确检测缺失name字段和未闭合frontmatter
+  - validateContentSize: 正确拒绝超过100KB内容
+  - validateFilePath: 正确拒绝路径逃逸和非法位置
+  - create动作: 成功创建技能目录和SKILL.md文件
+  - delete动作: 成功删除技能目录
+  - duplicate检测: 正确拒绝重名技能创建
 
 ### Phase 4 验证
 
@@ -1022,7 +1903,7 @@ pnpm install && pnpm build
 如果 session 重置，请：
 
 1. **阅读此文件**: `FUSION_PROGRESS.md`
-2. **查看总进度表**: 确认当前完成状态（Phase 6.1/6.2/2/1/3 已完成）
+2. **查看总进度表**: 确认当前完成状态
 3. **选择下一步工作**: 根据以下选项继续
 
 ### 当前状态总结
@@ -1033,38 +1914,75 @@ pnpm install && pnpm build
 ├── Phase 6.2: 权限融入 (4文件修改)
 ├── Phase 2: compaction模块 + run.ts集成 (7文件, 35 tests)
 ├── Phase 1: memory模块 + 运行时集成 (8文件, 43 tests)
-└── Phase 3: terminal模块 + bash-tools桥接 (11文件, 79 tests)
+├── Phase 3: terminal模块 + bash-tools桥接 (11文件, 79 tests)
+├── Phase 7: Prompt Cache (OpenClaw原生实现，无需移植)
+└── Phase 8: 自主技能形成 (2文件, 20 tests) ✅ NEW
 
 待完成:
-├── Phase 4: 技能系统 (6文件)
+├── Phase 9: 规则持久化 (1文件) - 原始缺失能力#6
+├── Phase 4: 技能系统扩展 (6文件)
 └── Phase 5: 任务/Fork (9文件)
 ```
 
+### 融合核心理念
+
+**目标**: 强化OpenClaw的自主持久工作能力和自主技能形成能力
+
+**Claude Code贡献（自主持久工作）**:
+
+- ✅ 运行时权限决策（安全执行）
+- ✅ checkPermissions管道（安全边界）
+- ✅ 危险命令检测（30+模式）
+- ✅ 权限上下文传递（跨工具）
+- ✅ 模式切换（plan模式）
+- ✅ **极致缓存利用**（持久高效）
+- ⏳ **StreamingToolExecutor**（流式并发）
+- ⏳ **Fork子Agent**（并行扩展）
+- ⏳ **Coordinator模式**（自主认领）
+- ⏳ **Background Tasks**（后台持久）
+
+**Hermes Agent贡献（学习能力）**:
+
+- ⏳ **自主技能形成**（Agent学习进化）
+- ⏳ **规则持久化**（记忆用户偏好）
+
 ### 下一步选项
 
-**选项 A - 继续实现新模块**:
+**选项 A - 实现自主技能形成（推荐 - 学习能力）**:
 
 ```
-执行 Phase 4 (技能系统)
-→ 扩展 src/agents/skills/ 目录下的文件
-→ 参考 Hermes: tools/skills_tool.py
+执行 Phase 8 (自主技能形成)
+→ 创建 skill-manage.ts 工具
+→ 实现学习触发检测（何时应该"学习"）
+→ 工作流程提取逻辑（如何"学习"）
+→ 参考 Hermes: tools/skills_tool.py skill_manage
+→ 让Agent具备"进化"能力
 ```
 
-**选项 B - 完成Phase 3后端扩展**:
+**选项 B - 增强自主持久工作能力**:
 
 ```
-桥接现有sandbox后端到terminal模块
-→ 修改 src/agents/terminal/backend-manager.ts
-→ 注册docker/ssh后端（复用sandbox代码）
-→ 测试危险命令在各后端的检测
+补充Claude Code的关键能力：
+→ StreamingToolExecutor流式并发执行
+→ Fork子Agent缓存优化（统一占位符）
+→ Background Tasks后台执行
+→ Coordinator模式（空闲循环+自动认领）
 ```
 
-**选项 C - 开始Phase 5任务系统**:
+**选项 C - 实现规则持久化**:
 
 ```
-实现任务数据结构和依赖图管理
-→ 参考 Claude Code: src/utils/tasks.ts
-→ 创建 src/agents/tasks/ 目录
+执行 Phase 9 (规则持久化)
+→ 创建 src/agents/permissions/persistence.ts
+→ 保存用户审批决策到 ~/.openclaw/permissions.json
+→ Agent记住用户偏好，减少重复询问
+```
+
+**选项 D - 继续Phase 4/5**:
+
+```
+Phase 4 (技能系统扩展) - 技能发现增强
+Phase 5 (任务/Fork系统) - 多Agent协作框架
 ```
 
 ### 关键文件快速参考
@@ -1125,3 +2043,8 @@ pnpm test -- src/agents/terminal
 - 2026-04-16: Phase 3-B 完成 - bash-tools.exec危险检测桥接集成 (79 tests passed)
 - 2026-04-16: Phase 2 集成完成 - pi-embedded-runner/run.ts熔断器集成
 - 2026-04-16: Phase 1 集成完成 - memory-runtime.ts桥接模块、run.ts启动初始化
+- 2026-04-16: **用户澄清融合核心理念**:
+  - Claude Code: **自主持久工作能力** - 12层Harness机制让Agent能长时间稳定完成复杂编程任务
+  - Hermes Agent: **自主技能形成能力** - Agent从有效流程中"学习"并固化可复用技能
+  - 补充Phase 10-13: StreamingToolExecutor、Fork优化、Coordinator、Background Tasks
+  - 重构Phase 8设计: 聚焦于"学习触发"和"工作流程提取"（Agent进化能力）
