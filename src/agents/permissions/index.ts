@@ -81,6 +81,7 @@ export {
   checkPermission,
   createDefaultPermissionContext,
   createPermissionContextFromProfile,
+  createPermissionContextWithPersistence,
   executePermissionPipeline,
   isOperationAllowed,
 } from "./pipeline.js";

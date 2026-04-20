@@ -14,6 +14,7 @@ import {
   isPlanMode,
   modeAllowsBehavior,
 } from "./modes.js";
+import { loadSavedRules, savedRuleToPermissionRule } from "./persistence.js";
 import { evaluateRules, parseRuleString, ruleMatchesTool } from "./rules.js";
 import type {
   AdditionalWorkingDirectory,
@@ -635,4 +636,59 @@ export function isOperationAllowed(
   }
 
   return false;
+}
+
+/**
+ * Create a permission context with persisted rules loaded from disk.
+ *
+ * This is the recommended way to create a permission context for production use,
+ * as it merges any previously saved permission decisions with the profile rules.
+ *
+ * @param profile - Permission profile to use as base
+ * @returns Permission context with persisted rules merged in
+ */
+export async function createPermissionContextWithPersistence(
+  profile: PermissionProfile,
+): Promise<ToolPermissionContext> {
+  // Create base context from profile
+  const baseContext = createPermissionContextFromProfile(profile);
+
+  // Load persisted rules
+  const savedRules = await loadSavedRules();
+
+  // Merge saved rules into context's rule maps
+  for (const saved of savedRules) {
+    const rule = savedRuleToPermissionRule(saved, "session");
+    const ruleKey = `${rule.ruleValue.toolName}${rule.ruleValue.ruleContent ? `:${rule.ruleValue.ruleContent}` : ""}`;
+
+    // Determine which rule map to add to based on behavior
+    switch (rule.ruleBehavior) {
+      case "allow":
+        if (!baseContext.alwaysAllowRules.session) {
+          baseContext.alwaysAllowRules.session = [];
+        }
+        if (!baseContext.alwaysAllowRules.session.includes(ruleKey)) {
+          baseContext.alwaysAllowRules.session.push(ruleKey);
+        }
+        break;
+      case "deny":
+        if (!baseContext.alwaysDenyRules.session) {
+          baseContext.alwaysDenyRules.session = [];
+        }
+        if (!baseContext.alwaysDenyRules.session.includes(ruleKey)) {
+          baseContext.alwaysDenyRules.session.push(ruleKey);
+        }
+        break;
+      case "ask":
+        if (!baseContext.alwaysAskRules.session) {
+          baseContext.alwaysAskRules.session = [];
+        }
+        if (!baseContext.alwaysAskRules.session.includes(ruleKey)) {
+          baseContext.alwaysAskRules.session.push(ruleKey);
+        }
+        break;
+    }
+  }
+
+  return baseContext;
 }
