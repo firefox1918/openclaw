@@ -254,6 +254,58 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Update Plan",
       detailKeys: ["explanation", "plan.0.step"],
     },
+    task: {
+      emoji: "📋",
+      title: "Task",
+      detailKeys: ["id", "subject", "status"],
+      actions: {
+        create: {
+          label: "create",
+          detailKeys: ["subject", "priority"],
+        },
+        get: {
+          label: "get",
+          detailKeys: ["id"],
+        },
+        update: {
+          label: "update",
+          detailKeys: ["id", "status"],
+        },
+        delete: {
+          label: "delete",
+          detailKeys: ["id"],
+        },
+        list: {
+          label: "list",
+        },
+        claim: {
+          label: "claim",
+          detailKeys: ["id", "owner"],
+        },
+        release: {
+          label: "release",
+          detailKeys: ["id"],
+        },
+        complete: {
+          label: "complete",
+          detailKeys: ["id"],
+        },
+        add_dependency: {
+          label: "add_dependency",
+          detailKeys: ["fromId", "toId"],
+        },
+        remove_dependency: {
+          label: "remove_dependency",
+          detailKeys: ["fromId", "toId"],
+        },
+        get_ready: {
+          label: "get_ready",
+        },
+        get_blocked: {
+          label: "get_blocked",
+        },
+      },
+    },
     gateway: {
       emoji: "🔌",
       title: "Gateway",

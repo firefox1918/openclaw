@@ -9,6 +9,7 @@ import {
   checkPermission,
   createDefaultPermissionContext,
   createPermissionContextFromProfile,
+  createPermissionContextWithPersistence,
   type PermissionResult,
   type ToolPermissionContext,
 } from "./permissions/index.js";
@@ -207,6 +208,59 @@ export function createRuntimePermissionContext(
     isBypassPermissionsModeAvailable: isBypassAvailable,
     grantedScopes,
   };
+}
+
+/**
+ * Create a permission context from runtime configuration with persisted rules.
+ *
+ * This is the recommended async version that loads previously saved permission
+ * decisions from disk and merges them with the profile/policy rules.
+ *
+ * @param config - Runtime permission configuration
+ * @returns Permission context with persisted rules merged in
+ */
+export async function createRuntimePermissionContextWithPersistence(
+  config: RuntimePermissionConfig,
+): Promise<ToolPermissionContext> {
+  if (config.profile) {
+    // Use the persistence-aware function from permissions module
+    const baseCtx = await createPermissionContextWithPersistence(config.profile);
+
+    // Build the context with overrides
+    const mode = baseCtx.mode;
+    const isBypassAvailable =
+      config.bypassPermissionsAvailable ?? baseCtx.isBypassPermissionsModeAvailable;
+    const grantedScopes = config.grantedScopes ?? baseCtx.grantedScopes ?? [];
+
+    // Merge policies if provided
+    let allowRules = baseCtx.alwaysAllowRules;
+    let denyRules = baseCtx.alwaysDenyRules;
+    if (config.policies && config.policies.length > 0) {
+      const { allowRules: policyAllow, denyRules: policyDeny } = policiesToRulesBySource(
+        config.policies,
+        config.policySource ?? "agentProfile",
+      );
+      // Profile rules take precedence
+      allowRules = mergeRulesBySource(baseCtx.alwaysAllowRules, policyAllow);
+      denyRules = mergeRulesBySource(baseCtx.alwaysDenyRules, policyDeny);
+    }
+
+    return {
+      mode,
+      additionalWorkingDirectories: baseCtx.additionalWorkingDirectories,
+      alwaysAllowRules: allowRules,
+      alwaysDenyRules: denyRules,
+      alwaysAskRules: baseCtx.alwaysAskRules,
+      isBypassPermissionsModeAvailable: isBypassAvailable,
+      grantedScopes,
+      requiredScopes: baseCtx.requiredScopes,
+      activeProfileId: baseCtx.activeProfileId,
+    };
+  }
+
+  // For non-profile cases, fall back to sync version
+  // (persistence is only meaningful when there's a profile)
+  return createRuntimePermissionContext(config);
 }
 
 /**
