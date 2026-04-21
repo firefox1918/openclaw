@@ -254,6 +254,28 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Update Plan",
       detailKeys: ["explanation", "plan.0.step"],
     },
+    background_task: {
+      emoji: "🔄",
+      title: "Background Task",
+      detailKeys: ["id", "directive", "status"],
+      actions: {
+        add: {
+          label: "add",
+          detailKeys: ["directive"],
+        },
+        get: {
+          label: "get",
+          detailKeys: ["id"],
+        },
+        list: {
+          label: "list",
+        },
+        cancel: {
+          label: "cancel",
+          detailKeys: ["id"],
+        },
+      },
+    },
     task: {
       emoji: "📋",
       title: "Task",
@@ -489,6 +511,11 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       emoji: "🧑‍🔧",
       title: "Sub-agent",
       detailKeys: ["label", "task", "agentId", "model", "thinking", "runTimeoutSeconds", "cleanup"],
+    },
+    sessions_spawn_batch: {
+      emoji: "🧑‍🔧",
+      title: "Sub-agent Batch",
+      detailKeys: ["label", "tasks", "runtime", "cleanup"],
     },
     subagents: {
       emoji: "🤖",

@@ -31,6 +31,7 @@ import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
 import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
+import { createSessionsSpawnBatchTool } from "./tools/sessions-spawn-batch-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createSessionsYieldTool } from "./tools/sessions-yield-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
@@ -292,6 +293,16 @@ export function createOpenClawTools(
       agentGroupId: options?.agentGroupId,
       agentGroupChannel: options?.agentGroupChannel,
       agentGroupSpace: options?.agentGroupSpace,
+      sandboxed: options?.sandboxed,
+      requesterAgentIdOverride: options?.requesterAgentIdOverride,
+      workspaceDir: spawnWorkspaceDir,
+    }),
+    createSessionsSpawnBatchTool({
+      agentSessionKey: options?.agentSessionKey,
+      agentChannel: options?.agentChannel,
+      agentAccountId: options?.agentAccountId,
+      agentTo: options?.agentTo,
+      agentThreadId: options?.agentThreadId,
       sandboxed: options?.sandboxed,
       requesterAgentIdOverride: options?.requesterAgentIdOverride,
       workspaceDir: spawnWorkspaceDir,
