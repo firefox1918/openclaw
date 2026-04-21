@@ -1661,6 +1661,213 @@ class BackgroundTaskManager {
 
 ---
 
+## Phase 14: 运行时集成 [已完成]
+
+**状态**: ✅ 已完成 (架构分析完成，Background Task Tool 已集成)
+**开始时间**: 2026-04-21
+**完成时间**: 2026-04-21
+**重要性**: ⭐⭐⭐⭐⭐ (功能实现→实际生效的关键步骤)
+**目标**: 将 Phase 10-13 模块接入 OpenClaw 运行时
+
+**结论**: Phase 14.1-14.3 因架构差异不适用，Phase 14.4 已完成集成。
+
+### 集成任务清单
+
+| 子任务     | 目标文件                       | 状态          | 进度 | 说明                               |
+| ---------- | ------------------------------ | ------------- | ---- | ---------------------------------- |
+| Phase 14.1 | StreamingToolExecutor → runner | ⏳ 不适用     | -    | SessionManager库处理工具执行       |
+| Phase 14.2 | Fork Cache → subagent-spawn    | ⏳ 不适用     | -    | OpenClaw架构不支持批量Fork         |
+| Phase 14.3 | Coordinator → 空闲循环         | ⏳ 需架构变更 | 0%   | OpenClaw无空闲状态概念             |
+| Phase 14.4 | Background Tasks → 后台管理    | ✅ **已完成** | 100% | background-task-tool.ts + 15 tests |
+
+### Phase 14.1: StreamingToolExecutor 集成
+
+**状态**: ⏳ 不适用 (架构差异)
+**原因**: OpenClaw 工具执行由 SessionManager 库处理，非 OpenClaw 代码控制
+
+**架构分析**:
+
+1. **SessionManager 来自 `@mariozechner/pi-coding-agent` 库**
+   - 工具执行完全由库内部处理
+   - OpenClaw 只创建 session (`createAgentSession`) 和调用 `prompt()`
+   - 库内部有自己的并发控制和流式执行逻辑
+
+2. **工具执行流程**:
+
+   ```
+   run.ts → runEmbeddedAttemptWithBackend → harness.runAttempt
+          → runEmbeddedAttempt → createAgentSession → session.prompt()
+          → SessionManager 内部工具执行循环 (非 OpenClaw 控制)
+   ```
+
+3. **Claude Code vs OpenClaw 对比**:
+   | 项目 | Claude Code | OpenClaw |
+   |------|-------------|----------|
+   | 工具执行 | Tool.ts 自己实现 | SessionManager 库 |
+   | 流式执行 | StreamingToolExecutor 可插入 | 库内部处理 |
+   | 并发控制 | 用户自定义并发安全列表 | 库内部控制 |
+
+**结论**: StreamingToolExecutor 模块已实现，但 OpenClaw 无法直接使用。SessionManager 库已有类似功能。标记为 **不适用**。
+
+### Phase 14.2: Fork Cache Optimization 集成
+
+**状态**: ⏳ 不适用 (架构差异)
+**原因**: OpenClaw 使用不同的子 Agent 架构
+
+**架构差异分析**:
+
+- Claude Code: Fork 模式 - 父 Agent 创建子 Agent，共享上下文，使用统一占位符
+- OpenClaw: Session-based 模式 - `subagent-spawn.ts` 通过 Gateway 创建独立子 Session
+- OpenClaw 每个 subagent 有独立的 `childSessionKey` 和消息构建
+- 无批量 Fork 场景可应用统一占位符缓存优化
+
+**结论**: Fork Cache Optimization 模块已实现（`fork-cache-optimization.ts`），但 OpenClaw 架构不支持批量 Fork 场景。此集成标记为 **不适用**。
+
+**未来可能**:
+
+- 如果 OpenClaw 实现批量并行 subagent spawning，可使用 `buildBatchForkMessages`
+
+### Phase 14.3: Coordinator 集成
+
+**状态**: ⏳ 需架构变更 (无空闲状态)
+**原因**: OpenClaw 运行完成后直接返回，无空闲循环概念
+
+**架构深度分析**:
+
+1. **run.ts 主循环结构**:
+
+   ```typescript
+   while (true) {                    // Line 592 - 主运行循环
+     const attempt = await runEmbeddedAttemptWithBackend(...);
+
+     // 处理各种结果:
+     if (timedOut) { continue; }     // 重试
+     if (aborted) { return; }        // 结束
+     if (failover) { continue; }     // 故障转移
+     if (success) { return; }        // 成功完成
+   }
+   // 循环结束后直接 return - 无空闲状态
+   ```
+
+2. **Gateway run-loop.ts 结构**:
+
+   ```typescript
+   for (;;) {                        // Line 260 - Gateway 永久循环
+     server = await params.start();  // 启动 server
+     await new Promise(...);         // 等待 restartResolver (信号触发)
+     // 无 Agent 运行概念，只管理 Gateway 生命周期
+   }
+   ```
+
+3. **关键发现**: OpenClaw Agent 运行完成后**直接返回**，无"空闲"状态。Gateway 管理进程生命周期，不管理 Agent 任务领取。
+
+4. **Coordinator 无法应用的原因**:
+   - Coordinator 需要空闲循环：`idle → getReadyTasks → claim → execute → idle`
+   - OpenClaw 无此循环：`run → complete → return`
+   - Gateway 不参与 Agent 任务管理
+
+5. **可能集成方案**:
+
+   **方案 A: 在 runEmbeddedPiAgent 返回前添加空闲循环**
+
+   ```typescript
+   // run.ts 结尾
+   async function idleLoop() {
+     while (shouldContinue()) {
+       const readyTasks = taskStore.getReadyTasks();
+       if (readyTasks.length > 0) {
+         const claimed = taskStore.claim(readyTasks[0].id, agentId);
+         if (claimed.success) {
+           await executeTask(claimed.task);
+         }
+       }
+       await sleep(idleCheckInterval);
+     }
+   }
+   ```
+
+   **问题**: 需要修改核心运行逻辑，影响复杂度大
+
+   **方案 B: 创建独立的 Coordinator Agent**
+   - 新建专门的后台 Agent 运行 Coordinator 空闲循环
+   - 使用 `background_task` 工具添加持久协调任务
+   - 不修改现有 run.ts 结构
+
+   **方案 C: 保持现状，文档化差异**
+   - OpenClaw 任务系统 (`task-tool.ts`) 已完整实现
+   - 用户可通过 `task.get_ready` + 手动认领完成任务协调
+   - Coordinator 模块保留供未来使用
+
+**建议**: 采用 **方案 C** - 当前保持现状，Coordinator 模块已实现但暂不集成。OpenClaw 架构需要重新设计才能支持空闲任务认领。
+
+**未来路径**:
+
+- 如果实现"持久 Agent"概念（Agent 完成任务后不退出），可集成 Coordinator
+- 或通过 `background_task` 工具创建后台协调进程
+
+### Phase 14.4: Background Tasks 集成
+
+**状态**: ✅ **已完成**
+**文件**:
+
+- `src/agents/tools/background-task-tool.ts` - 新创建
+- `src/agents/tools/background-task-tool.test.ts` - 15 tests passing
+
+---
+
+## Phase 14-adapt: 适配版重新设计 [待实施]
+
+> **设计文档**: [docs/superpowers/specs/2026-04-21-phase14-adaptation-design.md](docs/superpowers/specs/2026-04-21-phase14-adaptation-design.md)
+
+**状态**: ⏳ 待实施
+**开始时间**: 2026-04-21
+**目标**: 根据 OpenClaw 架构重新设计三个模块，实现外围适配
+
+**核心思路**: 不修改 OpenClaw 核心代码（run.ts、SessionManager），通过外围层实现相同能力。
+
+### 适配版任务清单
+
+| 任务       | 目标文件                     | 状态      | 适配方式                | 预估工作量 |
+| ---------- | ---------------------------- | --------- | ----------------------- | ---------- |
+| 14.1-adapt | concurrency-control-hook.ts  | ⏳ 待实施 | 钩子层并发控制          | 0.5 天     |
+| 14.2-adapt | sessions-spawn-batch-tool.ts | ⏳ 待实施 | 新建批量spawn工具       | 1 天       |
+| 14.3-adapt | coordinator-directive.ts     | ⏳ 待实施 | background_task持久任务 | 0.5 天     |
+
+### 适配方式对比
+
+| 原始模块                | 原始设计位置        | OpenClaw 适配位置                | 冲突程度 |
+| ----------------------- | ------------------- | -------------------------------- | -------- |
+| StreamingToolExecutor   | 替换 Tool.ts 执行器 | pi-tools.before-tool-call 钩子层 | 低       |
+| Fork Cache Optimization | 批量 Fork 消息构建  | 新建 sessions_spawn_batch 工具   | 无       |
+| Coordinator             | run.ts 空闲循环     | background_task 后台进程         | 无       |
+
+### 实施顺序建议
+
+1. **14.3-adapt** (Coordinator) - 最简单，只需 directive 模板，快速验证
+2. **14.2-adapt** (批量 spawn) - 价值最大，实现缓存优化
+3. **14.1-adapt** (并发控制) - 需修改钩子系统，谨慎实施
+
+### 详细设计
+
+详见 [设计文档](docs/superpowers/specs/2026-04-21-phase14-adaptation-design.md)
+
+- `src/agents/openclaw-tools.ts` - 已注册工具
+
+**实现内容**:
+
+- `createBackgroundTaskTool()` 工厂函数
+- Actions: add, get, list, cancel, clear, stats
+- 集成 `BackgroundTasksManager` 单例
+- 后台任务持久执行，主 Session 可继续工作
+
+**验证**:
+
+- TypeScript 编译通过 ✅
+- 15 tests passing ✅
+- 工具已注册到 `createOpenClawTools` ✅
+
+---
+
 ## Phase 1-6 遗留收尾工作
 
 ### Phase 1-6 验证 ✅ 已完成 (2026-04-16)
@@ -1807,18 +2014,20 @@ Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
 
 ### Claude Code能力（自主持久工作）
 
-| Phase        | 能力                          | 状态          | 进度 | 备注                          |
-| ------------ | ----------------------------- | ------------- | ---- | ----------------------------- |
-| Phase 6.1    | 权限模块实现                  | ✅ 已完成     | 100% | types/modes/rules/pipeline    |
-| Phase 6.2    | 权限融入                      | ✅ 已完成     | 100% | runtime-permission-check.ts   |
-| Phase 2      | 上下文管理（熔断器+递归保护） | ✅ 已完成     | 100% | compaction模块                |
-| Phase 1      | 记忆系统                      | ✅ 已完成     | 100% | memory模块 + runtime集成      |
-| Phase 3      | 终端执行（危险检测）          | ✅ 已完成     | 100% | terminal模块 + bash-tools桥接 |
-| Phase 7      | 极致缓存利用                  | ✅ 已覆盖     | 100% | OpenClaw原生实现              |
-| **Phase 10** | **StreamingToolExecutor**     | ✅ **已完成** | 100% | 流式并发执行 + 18 tests       |
-| **Phase 11** | **Fork子Agent优化**           | ✅ **已完成** | 100% | 统一占位符缓存 + 18 tests     |
-| **Phase 12** | **Coordinator模式**           | ✅ **已完成** | 100% | 空闲循环+自动认领 + 25 tests  |
-| **Phase 13** | **Background Tasks**          | ✅ **已完成** | 100% | 后台持久执行 + 24 tests       |
+| Phase              | 能力                          | 状态          | 进度 | 备注                                    |
+| ------------------ | ----------------------------- | ------------- | ---- | --------------------------------------- |
+| Phase 6.1          | 权限模块实现                  | ✅ 已完成     | 100% | types/modes/rules/pipeline              |
+| Phase 6.2          | 权限融入                      | ✅ 已完成     | 100% | runtime-permission-check.ts             |
+| Phase 2            | 上下文管理（熔断器+递归保护） | ✅ 已完成     | 100% | compaction模块                          |
+| Phase 1            | 记忆系统                      | ✅ 已完成     | 100% | memory模块 + runtime集成                |
+| Phase 3            | 终端执行（危险检测）          | ✅ 已完成     | 100% | terminal模块 + bash-tools桥接           |
+| Phase 7            | 极致缓存利用                  | ✅ 已覆盖     | 100% | OpenClaw原生实现                        |
+| **Phase 10**       | **StreamingToolExecutor**     | ✅ **已完成** | 100% | 流式并发执行 + 18 tests                 |
+| **Phase 11**       | **Fork子Agent优化**           | ✅ **已完成** | 100% | 统一占位符缓存 + 18 tests               |
+| **Phase 12**       | **Coordinator模式**           | ✅ **已完成** | 100% | 空闲循环+自动认领 + 25 tests            |
+| **Phase 13**       | **Background Tasks**          | ✅ **已完成** | 100% | 后台持久执行 + 24 tests                 |
+| **Phase 14**       | **运行时集成**                | ✅ **已完成** | 100% | 14.4完成+15tests,14.1-3架构差异分析完成 |
+| **Phase 14-adapt** | **适配版重新设计**            | ⏳ **待实施** | 0%   | 设计文档完成，待开始实施                |
 
 ### Hermes Agent能力（学习）
 

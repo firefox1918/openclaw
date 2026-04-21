@@ -16,6 +16,7 @@ import { createSkillsQueryTool } from "./skills/skills-query-tool.js";
 import type { SpawnedToolContext } from "./spawned-context.js";
 import type { ToolFsPolicy } from "./tool-fs-policy.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
+import { createBackgroundTaskTool } from "./tools/background-task-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { createCronTool } from "./tools/cron-tool.js";
@@ -311,6 +312,7 @@ export function createOpenClawTools(
       config: options?.config,
     }),
     createTaskTool(),
+    createBackgroundTaskTool(),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
   ];
 
