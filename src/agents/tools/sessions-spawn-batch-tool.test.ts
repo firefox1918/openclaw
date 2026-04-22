@@ -5,8 +5,8 @@
  * boilerplate for Prompt Cache optimization.
  */
 
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { createSessionsSpawnBatchTool, __testing } from "./sessions-spawn-batch-tool.js";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { createSessionsSpawnBatchTool, __testing, type BatchSpawnManager } from "./sessions-spawn-batch-tool.js";
 
 describe("sessions-spawn-batch-tool", () => {
   beforeEach(() => {
@@ -77,6 +77,17 @@ describe("sessions-spawn-batch-tool", () => {
     it("should accept tasks array with 2 items (minimum)", async () => {
       const tool = createSessionsSpawnBatchTool();
 
+      // Create a mock manager that returns immediately
+      const mockManager: Partial<BatchSpawnManager> = {
+        spawnBatch: vi.fn().mockResolvedValue({
+          status: "accepted",
+          sessionKeys: ["session-1", "session-2"],
+          runIds: [],
+          estimatedCacheSavings: 100,
+        }),
+      };
+      __testing.setBatchSpawnManager(mockManager as BatchSpawnManager);
+
       const result = await tool.execute("test-id", {
         tasks: ["Task 1", "Task 2"],
       } as never);
@@ -86,6 +97,17 @@ describe("sessions-spawn-batch-tool", () => {
 
     it("should accept tasks array with 10 items (maximum)", async () => {
       const tool = createSessionsSpawnBatchTool();
+
+      // Create a mock manager that returns immediately
+      const mockManager: Partial<BatchSpawnManager> = {
+        spawnBatch: vi.fn().mockResolvedValue({
+          status: "accepted",
+          sessionKeys: Array(10).fill("session"),
+          runIds: [],
+          estimatedCacheSavings: 500,
+        }),
+      };
+      __testing.setBatchSpawnManager(mockManager as BatchSpawnManager);
 
       const result = await tool.execute("test-id", {
         tasks: Array(10).fill("Task"),
