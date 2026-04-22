@@ -20,6 +20,12 @@ import {
   type BackgroundTaskConfig,
   type BackgroundTaskHandle,
 } from "../background-tasks.js";
+import {
+  createCoordinatorLoopManager,
+  type CoordinatorOptions,
+  type CoordinatorLoopManager,
+  CoordinatorLoopManagerImpl,
+} from "../coordinator-loop-manager.js";
 import { jsonResult } from "./common.js";
 
 // ============================================================================
@@ -59,6 +65,22 @@ const BackgroundTaskStatsSchema = Type.Object({
   action: Type.Literal("stats"),
 });
 
+const BackgroundTaskCoordinatorSchema = Type.Object({
+  action: Type.Literal("coordinator"),
+  mode: Type.Optional(
+    Type.Union([
+      Type.Literal("start"),
+      Type.Literal("stop"),
+      Type.Literal("pause"),
+      Type.Literal("resume"),
+      Type.Literal("status"),
+    ]),
+  ),
+  agentId: Type.Optional(Type.String()),
+  sessionKey: Type.Optional(Type.String()),
+  idleInterval: Type.Optional(Type.Number({ minimum: 1000, maximum: 600000 })),
+});
+
 const BackgroundTaskToolInputSchema = Type.Union([
   BackgroundTaskAddSchema,
   BackgroundTaskGetSchema,
@@ -66,6 +88,7 @@ const BackgroundTaskToolInputSchema = Type.Union([
   BackgroundTaskCancelSchema,
   BackgroundTaskClearSchema,
   BackgroundTaskStatsSchema,
+  BackgroundTaskCoordinatorSchema,
 ]);
 
 type BackgroundTaskToolInput = Static<typeof BackgroundTaskToolInputSchema>;
@@ -76,6 +99,18 @@ type BackgroundTaskToolInput = Static<typeof BackgroundTaskToolInputSchema>;
 
 // Global background tasks manager instance (singleton)
 let globalBackgroundTasksManager: BackgroundTasksManager | null = null;
+
+// Global coordinator loop manager instance (singleton)
+let globalCoordinatorLoopManager: CoordinatorLoopManagerImpl | null = null;
+
+/**
+ * Type guard to check if a manager is the implementation with all methods.
+ */
+function isCoordinatorImpl(
+  manager: CoordinatorLoopManager | null,
+): manager is CoordinatorLoopManagerImpl {
+  return manager !== null && "stop" in manager && "pause" in manager && "resume" in manager;
+}
 
 function getBackgroundTasksManager(): BackgroundTasksManager {
   if (!globalBackgroundTasksManager) {
@@ -217,6 +252,104 @@ async function executeBackgroundTaskTool(
       });
     }
 
+    case "coordinator": {
+      const mode = input.mode ?? "status";
+
+      switch (mode) {
+        case "start": {
+          // Stop existing coordinator if running
+          if (isCoordinatorImpl(globalCoordinatorLoopManager)) {
+            globalCoordinatorLoopManager.stop();
+          }
+
+          const options: CoordinatorOptions = {
+            agentId: input.agentId,
+            sessionKey: input.sessionKey,
+            idleInterval: input.idleInterval,
+          };
+
+          globalCoordinatorLoopManager = createCoordinatorLoopManager(
+            options,
+          ) as CoordinatorLoopManagerImpl;
+          globalCoordinatorLoopManager.start();
+
+          const status = globalCoordinatorLoopManager.getStatus();
+          return jsonResult({
+            success: true,
+            coordinator: status,
+            message: `Coordinator loop started: ${status.loopId}`,
+          });
+        }
+
+        case "stop": {
+          if (!isCoordinatorImpl(globalCoordinatorLoopManager)) {
+            return jsonResult({
+              success: false,
+              error: "No coordinator loop running",
+            });
+          }
+
+          globalCoordinatorLoopManager.stop();
+          const status = globalCoordinatorLoopManager.getStatus();
+          return jsonResult({
+            success: true,
+            coordinator: status,
+            message: "Coordinator loop stopped",
+          });
+        }
+
+        case "pause": {
+          if (!isCoordinatorImpl(globalCoordinatorLoopManager)) {
+            return jsonResult({
+              success: false,
+              error: "No coordinator loop running",
+            });
+          }
+
+          globalCoordinatorLoopManager.pause();
+          const status = globalCoordinatorLoopManager.getStatus();
+          return jsonResult({
+            success: true,
+            coordinator: status,
+            message: "Coordinator loop paused",
+          });
+        }
+
+        case "resume": {
+          if (!isCoordinatorImpl(globalCoordinatorLoopManager)) {
+            return jsonResult({
+              success: false,
+              error: "No coordinator loop running",
+            });
+          }
+
+          globalCoordinatorLoopManager.resume();
+          const status = globalCoordinatorLoopManager.getStatus();
+          return jsonResult({
+            success: true,
+            coordinator: status,
+            message: "Coordinator loop resumed",
+          });
+        }
+
+        case "status":
+        default: {
+          if (!globalCoordinatorLoopManager) {
+            return jsonResult({
+              success: false,
+              error: "No coordinator loop running",
+            });
+          }
+
+          const status = globalCoordinatorLoopManager.getStatus();
+          return jsonResult({
+            success: true,
+            coordinator: status,
+          });
+        }
+      }
+    }
+
     default:
       return jsonResult({
         success: false,
@@ -257,5 +390,14 @@ export const __testing = {
   },
   setBackgroundTasksManager(manager: BackgroundTasksManager): void {
     globalBackgroundTasksManager = manager;
+  },
+  getCoordinatorLoopManager(): CoordinatorLoopManagerImpl | null {
+    return globalCoordinatorLoopManager;
+  },
+  resetCoordinatorLoopManager(): void {
+    if (isCoordinatorImpl(globalCoordinatorLoopManager)) {
+      globalCoordinatorLoopManager.stop();
+      globalCoordinatorLoopManager = null;
+    }
   },
 };
