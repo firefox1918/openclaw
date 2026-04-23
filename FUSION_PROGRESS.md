@@ -498,35 +498,24 @@ Phase 6.2 融入已完成。权限系统现在可以：
 - Phase 4: 技能系统
 - Phase 5: 任务系统与多智能体协作
 
-| 文件路径                                  | 操作 | 状态              |
-| ----------------------------------------- | ---- | ----------------- |
-| `src/agents/runtime-permission-check.ts`  | 新建 | ✅ 已创建，需调整 |
-| `src/agents/pi-tools.before-tool-call.ts` | 修改 | 🔄 进行中         |
-| `src/agents/tool-policy.ts`               | 修改 | ⏳ 待开始         |
-| `src/agents/pi-tools.ts`                  | 修改 | ⏳ 待开始         |
-| `src/config/types.tools.ts`               | 修改 | ⏳ 待开始 (可选)  |
+| 文件路径                                  | 操作 | 状态      |
+| ----------------------------------------- | ---- | --------- |
+| `src/agents/runtime-permission-check.ts`  | 新建 | ✅ 已完成 |
+| `src/agents/pi-tools.before-tool-call.ts` | 修改 | ✅ 已完成 |
+| `src/agents/tool-policy.ts`               | 修改 | ✅ 已完成 |
+| `src/agents/pi-tools.ts`                  | 修改 | ✅ 已完成 |
+| `src/config/types.tools.ts`               | 修改 | ✅ 已完成 |
 
-#### 已完成文件（上一个session）
+#### 完成状态
 
-**runtime-permission-check.ts** 已创建，但存在以下问题：
+**Phase 6.2 融入已于 2026-04-14 完成**:
 
-- ❌ 无法从配置获取permissionContext（缺少配置层集成）
-- ❌ ask行为未触发用户确认（只返回askPrompt）
-- ❌ 未与现有tool-policy系统集成
+- ✅ 配置层集成: `policiesToRulesBySource()`, `buildPermissionConfigFromPolicies()`
+- ✅ 运行时桥接: `pi-tools.ts` 传递 `permissionConfig`
+- ✅ 执行点集成: `pi-tools.before-tool-call.ts` 权限检查入口
+- ✅ ask处理: 触发 Gateway approval 流程
 
-#### 下一步工作
-
-1. **完成配置层集成** (Step 1)
-   - 在tool-policy.ts中添加规则转换逻辑
-   - 现有allow/deny → PermissionRule
-
-2. **完成运行时桥接** (Step 2)
-   - 在pi-tools.ts中构建permissionContext
-   - 传递到wrapToolWithBeforeToolCallHook
-
-3. **完成ask处理** (Step 4)
-   - ask → requireApproval转换
-   - 复用现有approval流程
+**验证**: 2026-04-23 e2e tests 28 passed
 
 #### 参考源码
 
@@ -1193,15 +1182,12 @@ async function proposeSkillLearning(
 }
 ```
 
-### 文件清单
+### 文件清单（实际实现）
 
-| 文件路径                                  | 操作 | 状态                      |
-| ----------------------------------------- | ---- | ------------------------- |
-| `src/agents/tools/skill-manage.ts`        | 新建 | ⏳                        |
-| `src/agents/skill-learning-trigger.ts`    | 新建 | ⏳                        |
-| `src/agents/skill-workflow-extractor.ts`  | 新建 | ⏳                        |
-| `src/agents/skills/workspace.ts`          | 修改 | ⏳ (添加skill_manage注册) |
-| `src/agents/pi-tools.before-tool-call.ts` | 修改 | ⏳ (添加学习触发检测)     |
+| 文件路径                                      | 操作 | 状态        |
+| --------------------------------------------- | ---- | ----------- |
+| `src/agents/skills/skill-manage-tool.ts`      | 新建 | ✅ 已完成   |
+| `src/agents/skills/skill-manage-tool.test.ts` | 新建 | ✅ 20 tests |
 
 ### 参考源码
 
@@ -2262,54 +2248,30 @@ pnpm install && pnpm build
 - ✅ 权限上下文传递（跨工具）
 - ✅ 模式切换（plan模式）
 - ✅ **极致缓存利用**（持久高效）
-- ⏳ **StreamingToolExecutor**（流式并发）
-- ⏳ **Fork子Agent**（并行扩展）
-- ⏳ **Coordinator模式**（自主认领）
-- ⏳ **Background Tasks**（后台持久）
+- ✅ **StreamingToolExecutor**（流式并发）- Phase 10 + 14-adapt
+- ✅ **Fork子Agent**（并行扩展）- Phase 11 + 14-adapt
+- ✅ **Coordinator模式**（自主认领）- Phase 12 + 14-adapt
+- ✅ **Background Tasks**（后台持久）- Phase 13
 
 **Hermes Agent贡献（学习能力）**:
 
-- ⏳ **自主技能形成**（Agent学习进化）
-- ⏳ **规则持久化**（记忆用户偏好）
+- ✅ **自主技能形成**（Agent学习进化）- Phase 8
+- ✅ **规则持久化**（记忆用户偏好）- Phase 9
 
-### 下一步选项
+### ✅ 所有计划已完成（2026-04-23）
 
-**选项 A - 实现自主技能形成（推荐 - 学习能力）**:
+**融合核心理念已实现**:
 
-```
-执行 Phase 8 (自主技能形成)
-→ 创建 skill-manage.ts 工具
-→ 实现学习触发检测（何时应该"学习"）
-→ 工作流程提取逻辑（如何"学习"）
-→ 参考 Hermes: tools/skills_tool.py skill_manage
-→ 让Agent具备"进化"能力
-```
+| 能力类型         | 来源                 | 实现Phase        | 状态        |
+| ---------------- | -------------------- | ---------------- | ----------- |
+| 自主持久工作能力 | Claude Code          | Phase 1-7, 10-14 | ✅ 全部完成 |
+| 学习进化能力     | Hermes Agent         | Phase 8-9        | ✅ 全部完成 |
+| 运行时安全       | Claude Code + Hermes | Phase 6 + 3      | ✅ 全部完成 |
 
-**选项 B - 增强自主持久工作能力**:
+**遗留收尾工作**:
 
-```
-补充Claude Code的关键能力：
-→ StreamingToolExecutor流式并发执行
-→ Fork子Agent缓存优化（统一占位符）
-→ Background Tasks后台执行
-→ Coordinator模式（空闲循环+自动认领）
-```
-
-**选项 C - 实现规则持久化**:
-
-```
-执行 Phase 9 (规则持久化)
-→ 创建 src/agents/permissions/persistence.ts
-→ 保存用户审批决策到 ~/.openclaw/permissions.json
-→ Agent记住用户偏好，减少重复询问
-```
-
-**选项 D - 继续Phase 4/5**:
-
-```
-Phase 4 (技能系统扩展) - 技能发现增强
-Phase 5 (任务/Fork系统) - 多Agent协作框架
-```
+- ✅ Phase 3 sandbox桥接（方案 C 职责分离）
+- ✅ Phase 6.2 运行时测试（e2e tests 28 passed）
 
 ### 关键文件快速参考
 
