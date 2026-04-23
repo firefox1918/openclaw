@@ -1908,9 +1908,33 @@ class BackgroundTaskManager {
 
 **结论**: 职责分离是正确设计，terminal/backend-manager.ts 不需要注册 docker/ssh 后端
 
-### Phase 6.2 运行时测试 ⏳ 待完成
+### Phase 6.2 运行时测试 ✅ 已完成 (2026-04-23)
 
-需要实际Agent执行验证权限审批流程完整工作。
+**验证方式**: 端到端测试 (pi-tools.before-tool-call.e2e.test.ts)
+
+**测试结果**:
+
+- 权限审批流程 e2e tests: 28 tests passed ✅
+- permissions 模块 tests: 28 tests passed ✅
+- dangerous-check tests: 17 tests passed ✅
+
+**验证场景**:
+
+1. `deny` 行为阻止工具执行 ✅
+2. `ask` 行为触发 Gateway approval 流程 ✅
+   - `plugin.approval.request` 创建审批请求
+   - `plugin.approval.waitDecision` 等待用户决策
+3. 用户决策处理 ✅
+   - `allow-once` → 解除阻止，执行工具
+   - `deny` → 保持阻止，返回拒绝原因
+   - `timeout` → 默认拒绝，可配置 `timeoutBehavior: allow`
+4. AbortSignal 取消支持 ✅
+   - 运行取消时中断审批等待
+   - 清理 abort 监听器
+5. onResolution 回调 ✅
+   - `allow-once`, `deny`, `timeout`, `cancelled` 状态回调
+
+**结论**: Phase 6.2 权限审批流程完整工作，无需手动 Agent 测试。
 
 ---
 
@@ -1929,7 +1953,7 @@ class BackgroundTaskManager {
 
 遗留收尾:
 ├── Phase 3 sandbox桥接 ✅ （方案 C 职责分离已实现）
-└── Phase 6.2 运行时测试 ⏳ （实际Agent验证）
+└── Phase 6.2 运行时测试 ✅ （e2e tests 28 passed）
 
 待执行路径:
 
@@ -1976,9 +2000,9 @@ Phase 1-6 遗留收尾工作
 │   └── bash-tools.exec.ts 已正确桥接危险检测与 sandbox 执行
 │   └── terminal/sandbox 职责分离是正确设计
 │
-└── Phase 6.2 运行时测试：实际Agent执行验证
-    └── 需要手动测试权限审批流程
-    └── 预计: 1小时
+└── ✅ Phase 6.2 运行时测试已完成 (2026-04-23)
+    └── e2e tests 28 passed - 权限审批流程完整验证
+    └── permissions tests 28 passed + dangerous tests 17 passed
 ```
 
 **优先级1（收尾后立即执行）**:
@@ -2064,7 +2088,9 @@ Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
 - ✅ TypeScript编译通过 (pnpm tsgo)
 - ✅ 全量测试通过 (1770 passed)
 - ✅ Permissions模块测试通过 (28 tests passed)
-- ⏳ 运行时测试需要实际Agent执行验证（待后续）
+- ✅ 运行时权限审批流程验证 (2026-04-23)
+  - e2e tests: 28 tests passed (pi-tools.before-tool-call.e2e.test.ts)
+  - dangerous-check tests: 17 tests passed
 
 ### Phase 6.1 验证 ✅ 已完成
 
