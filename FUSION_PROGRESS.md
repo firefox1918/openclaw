@@ -1815,50 +1815,52 @@ class BackgroundTaskManager {
 
 ---
 
-## Phase 14-adapt: 适配版重新设计 [待实施]
+## Phase 14-adapt: 适配版重新设计 [已完成]
 
 > **设计文档**: [docs/superpowers/specs/2026-04-21-phase14-adaptation-design.md](docs/superpowers/specs/2026-04-21-phase14-adaptation-design.md)
+> **实现计划**: [docs/superpowers/plans/2026-04-21-phase14-adaptation-impl.md](docs/superpowers/plans/2026-04-21-phase14-adaptation-impl.md)
 
-**状态**: ⏳ 待实施
+**状态**: ✅ 已完成
 **开始时间**: 2026-04-21
+**完成时间**: 2026-04-22
 **目标**: 根据 OpenClaw 架构重新设计三个模块，实现外围适配
 
 **核心思路**: 不修改 OpenClaw 核心代码（run.ts、SessionManager），通过外围层实现相同能力。
 
 ### 适配版任务清单
 
-| 任务       | 目标文件                     | 状态      | 适配方式                | 预估工作量 |
-| ---------- | ---------------------------- | --------- | ----------------------- | ---------- |
-| 14.1-adapt | concurrency-control-hook.ts  | ⏳ 待实施 | 钩子层并发控制          | 0.5 天     |
-| 14.2-adapt | sessions-spawn-batch-tool.ts | ⏳ 待实施 | 新建批量spawn工具       | 1 天       |
-| 14.3-adapt | coordinator-directive.ts     | ⏳ 待实施 | background_task持久任务 | 0.5 天     |
+| 任务       | 目标文件                        | 状态      | 适配方式                | 测试 |
+| ---------- | ------------------------------- | --------- | ----------------------- | ---- |
+| 14.1-adapt | concurrency-control-wrapper.ts  | ✅ 已完成 | 工具包装层并发控制       | 18   |
+| 14.2-adapt | sessions-spawn-batch-tool.ts    | ✅ 已完成 | 新建批量spawn工具       | 15   |
+| 14.3-adapt | coordinator-loop-manager.ts     | ✅ 已完成 | 基础设施控制循环        | 30   |
+
+### 实现文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/agents/tools/sessions-spawn-batch-tool.ts` | 批量 spawn 工具 + Prompt Cache 优化 |
+| `src/agents/coordinator-loop-manager.ts` | 基础设施控制循环 + AbortSignal sleep |
+| `src/agents/concurrency-control-wrapper.ts` | 工具并发槽位管理 |
+| `src/agents/tools/background-task-tool.ts` | 添加 coordinator 模式支持 |
+
+### 设计变更说明
+
+1. **14.1-adapt v3**: 从钩子层改为工具包装层，正确传递 AbortSignal
+2. **14.2-adapt v1**: 统一消息模板实现 Prompt Cache 优化
+3. **14.3-adapt v2**: 从 Agent directive 改为基础设施控制循环（JavaScript 定时器）
 
 ### 适配方式对比
 
-| 原始模块                | 原始设计位置        | OpenClaw 适配位置                | 冲突程度 |
-| ----------------------- | ------------------- | -------------------------------- | -------- |
-| StreamingToolExecutor   | 替换 Tool.ts 执行器 | pi-tools.before-tool-call 钩子层 | 低       |
-| Fork Cache Optimization | 批量 Fork 消息构建  | 新建 sessions_spawn_batch 工具   | 无       |
-| Coordinator             | run.ts 空闲循环     | background_task 后台进程         | 无       |
-
-### 实施顺序建议
-
-1. **14.3-adapt** (Coordinator) - 最简单，只需 directive 模板，快速验证
-2. **14.2-adapt** (批量 spawn) - 价值最大，实现缓存优化
-3. **14.1-adapt** (并发控制) - 需修改钩子系统，谨慎实施
+| 原始模块                | 原始设计位置        | OpenClaw 适配位置                   | 冲突程度 |
+| ----------------------- | ------------------- | ----------------------------------- | -------- |
+| StreamingToolExecutor   | 替换 Tool.ts 执行器 | concurrency-control-wrapper.ts      | 已适配   |
+| Fork Cache Optimization | 批量 Fork 消息构建  | sessions-spawn-batch-tool.ts        | 已适配   |
+| Coordinator             | run.ts 空闲循环     | coordinator-loop-manager.ts         | 已适配   |
 
 ### 详细设计
 
 详见 [设计文档](docs/superpowers/specs/2026-04-21-phase14-adaptation-design.md)
-
-- `src/agents/openclaw-tools.ts` - 已注册工具
-
-**实现内容**:
-
-- `createBackgroundTaskTool()` 工厂函数
-- Actions: add, get, list, cancel, clear, stats
-- 集成 `BackgroundTasksManager` 单例
-- 后台任务持久执行，主 Session 可继续工作
 
 **验证**:
 
@@ -2027,7 +2029,7 @@ Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
 | **Phase 12**       | **Coordinator模式**           | ✅ **已完成** | 100% | 空闲循环+自动认领 + 25 tests            |
 | **Phase 13**       | **Background Tasks**          | ✅ **已完成** | 100% | 后台持久执行 + 24 tests                 |
 | **Phase 14**       | **运行时集成**                | ✅ **已完成** | 100% | 14.4完成+15tests,14.1-3架构差异分析完成 |
-| **Phase 14-adapt** | **适配版重新设计**            | ⏳ **待实施** | 0%   | 设计文档完成，待开始实施                |
+| **Phase 14-adapt** | **适配版重新设计**            | ✅ **已完成** | 100% | 78 tests，3模块全部完成          |
 
 ### Hermes Agent能力（学习）
 
