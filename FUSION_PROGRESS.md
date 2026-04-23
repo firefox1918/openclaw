@@ -1829,20 +1829,20 @@ class BackgroundTaskManager {
 
 ### 适配版任务清单
 
-| 任务       | 目标文件                        | 状态      | 适配方式                | 测试 |
-| ---------- | ------------------------------- | --------- | ----------------------- | ---- |
-| 14.1-adapt | concurrency-control-wrapper.ts  | ✅ 已完成 | 工具包装层并发控制       | 18   |
-| 14.2-adapt | sessions-spawn-batch-tool.ts    | ✅ 已完成 | 新建批量spawn工具       | 15   |
-| 14.3-adapt | coordinator-loop-manager.ts     | ✅ 已完成 | 基础设施控制循环        | 30   |
+| 任务       | 目标文件                       | 状态      | 适配方式           | 测试 |
+| ---------- | ------------------------------ | --------- | ------------------ | ---- |
+| 14.1-adapt | concurrency-control-wrapper.ts | ✅ 已完成 | 工具包装层并发控制 | 18   |
+| 14.2-adapt | sessions-spawn-batch-tool.ts   | ✅ 已完成 | 新建批量spawn工具  | 15   |
+| 14.3-adapt | coordinator-loop-manager.ts    | ✅ 已完成 | 基础设施控制循环   | 30   |
 
 ### 实现文件
 
-| 文件 | 说明 |
-|------|------|
-| `src/agents/tools/sessions-spawn-batch-tool.ts` | 批量 spawn 工具 + Prompt Cache 优化 |
-| `src/agents/coordinator-loop-manager.ts` | 基础设施控制循环 + AbortSignal sleep |
-| `src/agents/concurrency-control-wrapper.ts` | 工具并发槽位管理 |
-| `src/agents/tools/background-task-tool.ts` | 添加 coordinator 模式支持 |
+| 文件                                            | 说明                                 |
+| ----------------------------------------------- | ------------------------------------ |
+| `src/agents/tools/sessions-spawn-batch-tool.ts` | 批量 spawn 工具 + Prompt Cache 优化  |
+| `src/agents/coordinator-loop-manager.ts`        | 基础设施控制循环 + AbortSignal sleep |
+| `src/agents/concurrency-control-wrapper.ts`     | 工具并发槽位管理                     |
+| `src/agents/tools/background-task-tool.ts`      | 添加 coordinator 模式支持            |
 
 ### 设计变更说明
 
@@ -1852,11 +1852,11 @@ class BackgroundTaskManager {
 
 ### 适配方式对比
 
-| 原始模块                | 原始设计位置        | OpenClaw 适配位置                   | 冲突程度 |
-| ----------------------- | ------------------- | ----------------------------------- | -------- |
-| StreamingToolExecutor   | 替换 Tool.ts 执行器 | concurrency-control-wrapper.ts      | 已适配   |
-| Fork Cache Optimization | 批量 Fork 消息构建  | sessions-spawn-batch-tool.ts        | 已适配   |
-| Coordinator             | run.ts 空闲循环     | coordinator-loop-manager.ts         | 已适配   |
+| 原始模块                | 原始设计位置        | OpenClaw 适配位置              | 冲突程度 |
+| ----------------------- | ------------------- | ------------------------------ | -------- |
+| StreamingToolExecutor   | 替换 Tool.ts 执行器 | concurrency-control-wrapper.ts | 已适配   |
+| Fork Cache Optimization | 批量 Fork 消息构建  | sessions-spawn-batch-tool.ts   | 已适配   |
+| Coordinator             | run.ts 空闲循环     | coordinator-loop-manager.ts    | 已适配   |
 
 ### 详细设计
 
@@ -1888,17 +1888,25 @@ class BackgroundTaskManager {
 - Phase 3: `bash-tools.exec.ts:23,1511-1526` - checkDangerousCommandAndRequestApproval ✅
 - Phase 6: `pi-tools.ts:51,673-691`, `pi-tools.before-tool-call.ts:12,148,252` ✅
 
-### Phase 3 后端扩展 ⏳ 待完成
+### Phase 3 后端扩展 ✅ 已完成 (方案 C: 职责分离)
 
-**状态**: 核心模块已完成，扩展未完成
+**状态**: 核心模块已完成，sandbox桥接采用方案 C（职责分离）实现
 
-| 扩展项                        | 状态        | 工作量 |
-| ----------------------------- | ----------- | ------ |
-| sandbox桥接（docker/ssh）     | ⏳ 未完成   | 2天    |
-| 权限深度集成                  | ⏳ 部分完成 | 1天    |
-| modal/daytona/singularity后端 | ⏳ 未完成   | 3天    |
+| 扩展项                        | 状态      | 说明                                                                      |
+| ----------------------------- | --------- | ------------------------------------------------------------------------- |
+| sandbox桥接（docker/ssh）     | ✅ 已完成 | 方案 C: terminal负责危险检测，sandbox负责容器执行，bash-tools.exec.ts桥接 |
+| 权限深度集成                  | ✅ 已完成 | dangerous-check.ts 集成 Phase 6 权限审批                                  |
+| modal/daytona/singularity后端 | ⏳ 未完成 | 可扩展后端（非核心）                                                      |
 
-**建议**: sandbox桥接优先级较高（已有docker/ssh实现可复用）
+**方案 C 实现说明**:
+
+- **terminal 模块职责**: 命令级安全检测（30+危险模式）+ local 后端执行
+- **sandbox 模块职责**: 容器级隔离（Docker/SSH）+ workspace lifecycle + 安全加固
+- **bash-tools.exec.ts 桥接**: Line 1511 危险检测 → Line 1688 sandbox 执行
+
+**验证**: 危险检测在 sandbox 执行之前生效 ✅ (Line 1511-1521 blocked → Line 1688 sandbox)
+
+**结论**: 职责分离是正确设计，terminal/backend-manager.ts 不需要注册 docker/ssh 后端
 
 ### Phase 6.2 运行时测试 ⏳ 待完成
 
@@ -1920,7 +1928,7 @@ class BackgroundTaskManager {
 └── Phase 1-6 集成验证 ✅ (2026-04-16)
 
 遗留收尾:
-├── Phase 3 sandbox桥接 ⏳ （docker/ssh后端）
+├── Phase 3 sandbox桥接 ✅ （方案 C 职责分离已实现）
 └── Phase 6.2 运行时测试 ⏳ （实际Agent验证）
 
 待执行路径:
@@ -1964,9 +1972,9 @@ Phase 1-6 遗留收尾工作
 │   ├── Phase 3: 41 tests ✅
 │   └── Phase 6: 28 tests ✅
 │
-├── Phase 3 sandbox桥接：复用现有docker/ssh后端
-│   └── src/agents/terminal/backend-manager.ts 修改
-│   └── 预计: 2天
+├── ✅ Phase 3 sandbox桥接已完成 (方案 C 职责分离)
+│   └── bash-tools.exec.ts 已正确桥接危险检测与 sandbox 执行
+│   └── terminal/sandbox 职责分离是正确设计
 │
 └── Phase 6.2 运行时测试：实际Agent执行验证
     └── 需要手动测试权限审批流程
@@ -2016,20 +2024,20 @@ Phase 9 规则持久化 → Phase 11 Fork优化 → Phase 12 → Phase 13
 
 ### Claude Code能力（自主持久工作）
 
-| Phase              | 能力                          | 状态          | 进度 | 备注                                    |
-| ------------------ | ----------------------------- | ------------- | ---- | --------------------------------------- |
-| Phase 6.1          | 权限模块实现                  | ✅ 已完成     | 100% | types/modes/rules/pipeline              |
-| Phase 6.2          | 权限融入                      | ✅ 已完成     | 100% | runtime-permission-check.ts             |
-| Phase 2            | 上下文管理（熔断器+递归保护） | ✅ 已完成     | 100% | compaction模块                          |
-| Phase 1            | 记忆系统                      | ✅ 已完成     | 100% | memory模块 + runtime集成                |
-| Phase 3            | 终端执行（危险检测）          | ✅ 已完成     | 100% | terminal模块 + bash-tools桥接           |
-| Phase 7            | 极致缓存利用                  | ✅ 已覆盖     | 100% | OpenClaw原生实现                        |
-| **Phase 10**       | **StreamingToolExecutor**     | ✅ **已完成** | 100% | 流式并发执行 + 18 tests                 |
-| **Phase 11**       | **Fork子Agent优化**           | ✅ **已完成** | 100% | 统一占位符缓存 + 18 tests               |
-| **Phase 12**       | **Coordinator模式**           | ✅ **已完成** | 100% | 空闲循环+自动认领 + 25 tests            |
-| **Phase 13**       | **Background Tasks**          | ✅ **已完成** | 100% | 后台持久执行 + 24 tests                 |
-| **Phase 14**       | **运行时集成**                | ✅ **已完成** | 100% | 14.4完成+15tests,14.1-3架构差异分析完成 |
-| **Phase 14-adapt** | **适配版重新设计**            | ✅ **已完成** | 100% | 78 tests，3模块全部完成          |
+| Phase              | 能力                             | 状态          | 进度 | 备注                                            |
+| ------------------ | -------------------------------- | ------------- | ---- | ----------------------------------------------- |
+| Phase 6.1          | 权限模块实现                     | ✅ 已完成     | 100% | types/modes/rules/pipeline                      |
+| Phase 6.2          | 权限融入                         | ✅ 已完成     | 100% | runtime-permission-check.ts                     |
+| Phase 2            | 上下文管理（熔断器+递归保护）    | ✅ 已完成     | 100% | compaction模块                                  |
+| Phase 1            | 记忆系统                         | ✅ 已完成     | 100% | memory模块 + runtime集成                        |
+| Phase 3            | 终端执行（危险检测+sandbox桥接） | ✅ 已完成     | 100% | terminal模块 + bash-tools桥接 + sandbox职责分离 |
+| Phase 7            | 极致缓存利用                     | ✅ 已覆盖     | 100% | OpenClaw原生实现                                |
+| **Phase 10**       | **StreamingToolExecutor**        | ✅ **已完成** | 100% | 流式并发执行 + 18 tests                         |
+| **Phase 11**       | **Fork子Agent优化**              | ✅ **已完成** | 100% | 统一占位符缓存 + 18 tests                       |
+| **Phase 12**       | **Coordinator模式**              | ✅ **已完成** | 100% | 空闲循环+自动认领 + 25 tests                    |
+| **Phase 13**       | **Background Tasks**             | ✅ **已完成** | 100% | 后台持久执行 + 24 tests                         |
+| **Phase 14**       | **运行时集成**                   | ✅ **已完成** | 100% | 14.4完成+15tests,14.1-3架构差异分析完成         |
+| **Phase 14-adapt** | **适配版重新设计**               | ✅ **已完成** | 100% | 78 tests，3模块全部完成                         |
 
 ### Hermes Agent能力（学习）
 
