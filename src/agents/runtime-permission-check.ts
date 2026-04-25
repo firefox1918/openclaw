@@ -10,6 +10,7 @@ import {
   createDefaultPermissionContext,
   createPermissionContextFromProfile,
   createPermissionContextWithPersistence,
+  isOperationAllowed,
   type PermissionResult,
   type ToolPermissionContext,
 } from "./permissions/index.js";
@@ -369,7 +370,6 @@ export async function isRuntimeOperationAllowed(
   toolName: string,
   context: ToolPermissionContext,
 ): Promise<boolean> {
-  const { isOperationAllowed } = await import("./permissions/index.js");
   return isOperationAllowed(toolName, context);
 }
 
