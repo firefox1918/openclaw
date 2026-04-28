@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { shouldExpectNativeJitiForJavaScriptTestRuntime } from "../test-utils/jiti-runtime.js";
 import {
   listImportedBundledPluginFacadeIds,
   loadBundledPluginPublicSurfaceModuleSync,
@@ -8,33 +9,42 @@ import {
   setFacadeLoaderJitiFactoryForTest,
 } from "./facade-loader.js";
 import { listImportedBundledPluginFacadeIds as listImportedFacadeRuntimeIds } from "./facade-runtime.js";
-import { createPluginSdkTestHarness } from "./test-helpers.js";
+import {
+  createBundledPluginPublicSurfaceFixture,
+  createPluginSdkTestHarness,
+  createThrowingBundledPluginPublicSurfaceFixture,
+} from "./test-helpers.js";
 
 const { createTempDirSync } = createPluginSdkTestHarness();
 const originalBundledPluginsDir = process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
+const originalDisableBundledPlugins = process.env.OPENCLAW_DISABLE_BUNDLED_PLUGINS;
 const FACADE_LOADER_GLOBAL = "__openclawTestLoadBundledPluginPublicSurfaceModuleSync";
 type FacadeLoaderJitiFactory = NonNullable<Parameters<typeof setFacadeLoaderJitiFactoryForTest>[0]>;
 
+function forceNodeRuntimeVersionsForTest(): () => void {
+  const originalVersions = process.versions;
+  const nodeVersions = { ...originalVersions } as NodeJS.ProcessVersions & {
+    bun?: string | undefined;
+  };
+  delete nodeVersions.bun;
+  Object.defineProperty(process, "versions", {
+    configurable: true,
+    value: nodeVersions,
+  });
+  return () => {
+    Object.defineProperty(process, "versions", {
+      configurable: true,
+      value: originalVersions,
+    });
+  };
+}
+
 function createBundledPluginDir(prefix: string, marker: string): string {
-  const rootDir = createTempDirSync(prefix);
-  fs.mkdirSync(path.join(rootDir, "demo"), { recursive: true });
-  fs.writeFileSync(
-    path.join(rootDir, "demo", "api.js"),
-    `export const marker = ${JSON.stringify(marker)};\n`,
-    "utf8",
-  );
-  return rootDir;
+  return createBundledPluginPublicSurfaceFixture({ createTempDirSync, marker, prefix });
 }
 
 function createThrowingPluginDir(prefix: string): string {
-  const rootDir = createTempDirSync(prefix);
-  fs.mkdirSync(path.join(rootDir, "bad"), { recursive: true });
-  fs.writeFileSync(
-    path.join(rootDir, "bad", "api.js"),
-    `throw new Error("plugin load failure");\n`,
-    "utf8",
-  );
-  return rootDir;
+  return createThrowingBundledPluginPublicSurfaceFixture({ createTempDirSync, prefix });
 }
 
 function createCircularPluginDir(prefix: string): string {
@@ -77,6 +87,11 @@ afterEach(() => {
   } else {
     process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = originalBundledPluginsDir;
   }
+  if (originalDisableBundledPlugins === undefined) {
+    delete process.env.OPENCLAW_DISABLE_BUNDLED_PLUGINS;
+  } else {
+    process.env.OPENCLAW_DISABLE_BUNDLED_PLUGINS = originalDisableBundledPlugins;
+  }
 });
 
 describe("plugin-sdk facade loader", () => {
@@ -99,6 +114,31 @@ describe("plugin-sdk facade loader", () => {
     expect(fromB.marker).toBe("override-b");
   });
 
+  it("falls back to package source surfaces when an override dir lacks a bundled plugin", () => {
+    process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = createTempDirSync("openclaw-facade-loader-empty-");
+
+    const loaded = loadBundledPluginPublicSurfaceModuleSync<{
+      closeTrackedBrowserTabsForSessions: unknown;
+    }>({
+      dirName: "browser",
+      artifactBasename: "browser-maintenance.js",
+    });
+
+    expect(loaded.closeTrackedBrowserTabsForSessions).toEqual(expect.any(Function));
+  });
+
+  it("keeps bundled facade loads disabled when bundled plugins are disabled", () => {
+    process.env.OPENCLAW_DISABLE_BUNDLED_PLUGINS = "1";
+    delete process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
+
+    expect(() =>
+      loadBundledPluginPublicSurfaceModuleSync({
+        dirName: "browser",
+        artifactBasename: "browser-maintenance.js",
+      }),
+    ).toThrow("Unable to resolve bundled plugin public surface browser/browser-maintenance.js");
+  });
+
   it("shares loaded facade ids with facade-runtime", () => {
     const dir = createBundledPluginDir("openclaw-facade-loader-ids-", "identity-check");
     process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = dir;
@@ -118,7 +158,7 @@ describe("plugin-sdk facade loader", () => {
     expect(listImportedFacadeRuntimeIds()).toEqual(["demo"]);
   });
 
-  it("keeps Windows dist facade loads off Jiti native import", () => {
+  it("uses the runtime-supported Jiti boundary for Windows dist facade loads", () => {
     const dir = createTempDirSync("openclaw-facade-loader-windows-dist-");
     const bundledPluginsDir = path.join(dir, "dist");
     fs.mkdirSync(path.join(bundledPluginsDir, "demo"), { recursive: true });
@@ -137,6 +177,7 @@ describe("plugin-sdk facade loader", () => {
       })) as unknown as ReturnType<FacadeLoaderJitiFactory>;
     }) as FacadeLoaderJitiFactory);
     const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    const restoreVersions = forceNodeRuntimeVersionsForTest();
 
     try {
       expect(
@@ -149,10 +190,11 @@ describe("plugin-sdk facade loader", () => {
       expect(createJitiCalls[0]?.[0]).toEqual(expect.any(String));
       expect(createJitiCalls[0]?.[1]).toEqual(
         expect.objectContaining({
-          tryNative: false,
+          tryNative: shouldExpectNativeJitiForJavaScriptTestRuntime(),
         }),
       );
     } finally {
+      restoreVersions();
       platformSpy.mockRestore();
     }
   });

@@ -16,8 +16,8 @@
  */
 
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { Static } from "@sinclair/typebox";
-import { Type } from "@sinclair/typebox";
+import type { Static } from "typebox";
+import { Type } from "typebox";
 import { stringEnum } from "../schema/typebox.js";
 import { createTaskStore, type TaskStore } from "../tasks/store.js";
 import type {
